@@ -1281,7 +1281,14 @@
             <h2 id="viewBankTitle" style="margin: 0;">View Test Bank</h2>
             <button class="modal-close-btn" onclick="app.closeViewModal()">×</button>
         </div>
+        <div class="input-group" style="margin-bottom: 20px;">
+            <label>🔍 Search Questions</label>
+            <input type="text" id="viewSearchInput" placeholder="Type to search questions or answers..." oninput="app.filterViewQuestions()">
+        </div>
         <div id="viewQuestionsList"></div>
+        <div id="viewNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
+            No questions found matching your search.
+        </div>
     </div>
 </div>
 
@@ -1308,7 +1315,14 @@
         </button>
         
         <h3 style="margin-top: 30px;">Existing Questions</h3>
+        <div class="input-group" style="margin-bottom: 20px;">
+            <label>🔍 Search Questions</label>
+            <input type="text" id="editSearchInput" placeholder="Type to search questions or answers..." oninput="app.filterEditQuestions()">
+        </div>
         <div id="editQuestionsList"></div>
+        <div id="editNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
+            No questions found matching your search.
+        </div>
         
         <div class="modal-footer">
             <button class="btn btn-success" onclick="app.saveEditedBank()">💾 Save Changes</button>
@@ -1691,17 +1705,37 @@
         }
 
         viewBank(key) {
+            this.currentViewKey = key;
             const bank = this.testBanks[key];
             
             document.getElementById('viewBankTitle').textContent = bank.title;
+            document.getElementById('viewSearchInput').value = '';
             
+            this.renderViewQuestions(bank.questions);
+            
+            document.getElementById('viewModal').classList.add('active');
+        }
+
+        renderViewQuestions(questions) {
             const questionsList = document.getElementById('viewQuestionsList');
+            const noResults = document.getElementById('viewNoResults');
+            
             questionsList.innerHTML = '';
             
-            bank.questions.forEach((q, index) => {
+            if (questions.length === 0) {
+                noResults.style.display = 'block';
+                questionsList.style.display = 'none';
+                return;
+            }
+            
+            noResults.style.display = 'none';
+            questionsList.style.display = 'block';
+            
+            questions.forEach((q, index) => {
                 const questionDiv = document.createElement('div');
                 questionDiv.style.cssText = 'background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #28a745;';
                 questionDiv.className = 'view-question-item';
+                questionDiv.setAttribute('data-question-index', index);
                 questionDiv.innerHTML = `
                     <strong>Q${index + 1}:</strong> ${q.question}
                     <div style="margin-top: 10px;">
@@ -1716,8 +1750,25 @@
                 `;
                 questionsList.appendChild(questionDiv);
             });
+        }
+
+        filterViewQuestions() {
+            const searchTerm = document.getElementById('viewSearchInput').value.toLowerCase().trim();
+            const bank = this.testBanks[this.currentViewKey];
             
-            document.getElementById('viewModal').classList.add('active');
+            if (!searchTerm) {
+                this.renderViewQuestions(bank.questions);
+                return;
+            }
+            
+            const filteredQuestions = bank.questions.filter((q, index) => {
+                if (q.question.toLowerCase().includes(searchTerm)) return true;
+                if (q.options.some(opt => opt.toLowerCase().includes(searchTerm))) return true;
+                if (String(index + 1).includes(searchTerm)) return true;
+                return false;
+            });
+            
+            this.renderViewQuestions(filteredQuestions);
         }
 
         closeViewModal() {
@@ -1731,18 +1782,34 @@
             document.getElementById('editBankTitle').textContent = bank.title;
             document.getElementById('editBankName').value = bank.title;
             document.getElementById('editQuestionsInput').value = '';
+            document.getElementById('editSearchInput').value = '';
             
             this.renderEditQuestions();
             
             document.getElementById('editModal').classList.add('active');
         }
 
-        renderEditQuestions() {
+        renderEditQuestions(filteredIndices = null) {
             const bank = this.testBanks[this.currentEditingBank];
             const questionsList = document.getElementById('editQuestionsList');
+            const noResults = document.getElementById('editNoResults');
+            
             questionsList.innerHTML = '';
             
-            bank.questions.forEach((q, index) => {
+            const indicesToRender = filteredIndices !== null ? filteredIndices : 
+                bank.questions.map((_, i) => i);
+            
+            if (indicesToRender.length === 0) {
+                noResults.style.display = 'block';
+                questionsList.style.display = 'none';
+                return;
+            }
+            
+            noResults.style.display = 'none';
+            questionsList.style.display = 'block';
+            
+            indicesToRender.forEach(index => {
+                const q = bank.questions[index];
                 const questionDiv = document.createElement('div');
                 questionDiv.id = `question-${index}`;
                 questionDiv.className = 'edit-question-item';
@@ -1771,6 +1838,33 @@
                 `;
                 questionsList.appendChild(questionDiv);
             });
+        }
+        
+        filterEditQuestions() {
+            const searchTerm = document.getElementById('editSearchInput').value.toLowerCase().trim();
+            const bank = this.testBanks[this.currentEditingBank];
+            
+            if (!searchTerm) {
+                this.renderEditQuestions();
+                return;
+            }
+            
+            const filteredIndices = [];
+            bank.questions.forEach((q, index) => {
+                if (q.question.toLowerCase().includes(searchTerm)) {
+                    filteredIndices.push(index);
+                    return;
+                }
+                if (q.options.some(opt => opt.toLowerCase().includes(searchTerm))) {
+                    filteredIndices.push(index);
+                    return;
+                }
+                if (String(index + 1).includes(searchTerm)) {
+                    filteredIndices.push(index);
+                }
+            });
+            
+            this.renderEditQuestions(filteredIndices);
         }
 
         addQuestionsToBank() {
