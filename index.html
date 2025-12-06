@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Quiz Master</title>
     <style>
         * {
@@ -126,6 +126,26 @@
         body.dark-mode .edit-question-item {
             background: #16213e !important;
             border-left-color: #667eea !important;
+        }
+
+        body.dark-mode #gameContainer h4,
+        body.dark-mode #gameContainer strong,
+        body.dark-mode #gameContainer span {
+            color: #000000 !important;
+        }
+
+        body.dark-mode .feedback-content {
+            background: #0f3460 !important;
+            color: #e0e0e0 !important;
+        }
+
+        body.dark-mode .feedback-content p {
+            color: #b0b0b0 !important;
+        }
+
+        body.dark-mode .analytics-row span,
+        body.dark-mode .analytics-row strong {
+            color: #000000 !important;
         }
 
         .theme-toggle {
@@ -587,8 +607,14 @@
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+            0%, 100% { 
+                transform: scale(1); 
+                box-shadow: 0 0 20px rgba(220, 53, 69, 0.6);
+            }
+            50% { 
+                transform: scale(1.02); 
+                box-shadow: 0 0 30px rgba(220, 53, 69, 0.8);
+            }
         }
 
         .progress-bar {
@@ -1078,6 +1104,150 @@
         body.dark-mode .flashcard-face {
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
+
+        @keyframes floatUp {
+            0% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, -200%) scale(1.5);
+            }
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                border-radius: 10px;
+            }
+
+            .header h1 {
+                font-size: 1.8em;
+            }
+
+            .nav-tabs {
+                flex-wrap: wrap;
+            }
+
+            .nav-tab {
+                padding: 12px 8px;
+                font-size: 0.9em;
+                flex: 1 1 33%;
+            }
+
+            .content {
+                padding: 15px;
+            }
+
+            .test-bank-list {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .btn {
+                padding: 10px 16px;
+                font-size: 0.9em;
+                min-width: 100px;
+            }
+
+            .quiz-question {
+                padding: 20px 15px;
+            }
+
+            .quiz-option {
+                padding: 12px;
+                font-size: 0.95em;
+            }
+
+            .modal-content {
+                width: 95%;
+                padding: 20px;
+                max-height: 90vh;
+            }
+
+            .flashcard {
+                height: 300px;
+            }
+
+            .flashcard-face {
+                padding: 20px;
+                font-size: 1.1em;
+            }
+
+            .timer {
+                top: 60px;
+                right: 10px;
+                padding: 12px;
+                font-size: 1.2em;
+            }
+
+            .theme-toggle {
+                top: 10px;
+                right: 10px;
+                padding: 8px 12px;
+                font-size: 1em;
+            }
+
+            .bg-settings {
+                bottom: 10px;
+                right: 10px;
+            }
+
+            .test-bank-card {
+                padding: 15px;
+            }
+
+            .test-bank-card h3 {
+                font-size: 1.1em;
+            }
+
+            .analytics-detail {
+                padding: 15px;
+            }
+
+            input, textarea, select {
+                font-size: 16px !important; /* Prevents zoom on iOS */
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.5em;
+            }
+
+            .nav-tab {
+                padding: 10px 5px;
+                font-size: 0.8em;
+            }
+
+            .btn {
+                padding: 8px 12px;
+                font-size: 0.85em;
+                min-width: 80px;
+                margin: 3px;
+            }
+
+            .quiz-option label {
+                font-size: 0.95em;
+            }
+
+            .flashcard {
+                height: 250px;
+            }
+
+            .flashcard-face {
+                font-size: 1em;
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1120,8 +1290,9 @@
 
     <div class="nav-tabs">
         <button class="nav-tab active" onclick="app.switchTab('manage')">Manage Banks</button>
-        <button class="nav-tab" onclick="app.switchTab('take')">Take Quiz</button>
         <button class="nav-tab" onclick="app.switchTab('study')">Study Mode</button>
+        <button class="nav-tab" onclick="app.switchTab('take')">Boards Mode</button>
+        <button class="nav-tab" onclick="app.switchTab('game')">Quiz Game</button>
         <button class="nav-tab" onclick="app.switchTab('analytics')">Analytics</button>
     </div>
 
@@ -1212,9 +1383,58 @@
             </div>
         </div>
 
+        <!-- Quiz Game Tab -->
+        <div id="game" class="tab-content">
+            <h2>🎮 Quiz Game Mode</h2>
+            <p style="color: #6c757d; margin-bottom: 20px;">Quick-fire questions with points and streaks!</p>
+            
+            <div class="input-group">
+                <label>Select a Test Bank</label>
+                <select id="gameSelectBank" onchange="app.loadGameSettings()">
+                    <option value="">Choose a test bank...</option>
+                </select>
+            </div>
+
+            <div id="gameSettings" style="display: none;">
+                <h3>Game Settings</h3>
+                <div class="input-group">
+                    <label>Number of Questions</label>
+                    <select id="gameQuestionCount">
+                        <option value="10">10 Questions</option>
+                        <option value="20">20 Questions</option>
+                        <option value="30">30 Questions</option>
+                        <option value="50">50 Questions</option>
+                        <option value="all">All Questions</option>
+                    </select>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="gameTimerEnabled" checked onchange="app.toggleTimeSelector()">
+                    <label for="gameTimerEnabled">Enable time limit per question</label>
+                </div>
+                <div class="input-group" id="timePerQuestionSelector">
+                    <label>Seconds per question (1-59)</label>
+                    <input type="number" id="gameTimePerQuestion" value="15" min="1" max="59" style="width: 100px;">
+                </div>
+                <button class="btn btn-primary" onclick="app.startGame()">🎮 Start Game</button>
+            </div>
+
+            <div id="gameContainer" style="display: none;"></div>
+
+            <div id="gameAnalytics" style="margin-top: 40px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">🏆 Game Statistics</h3>
+                    <button class="btn btn-danger" onclick="app.clearGameStats()" style="padding: 8px 16px; min-width: auto;">🗑️ Clear Stats</button>
+                </div>
+                <div id="gameStatsContent"></div>
+            </div>
+        </div>
+
         <!-- Analytics Tab -->
         <div id="analytics" class="tab-content">
-            <h2>Your Performance Analytics</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Your Performance Analytics</h2>
+                <button class="btn btn-danger" onclick="app.clearBoardStats()" style="padding: 10px 20px; min-width: auto;">🗑️ Clear Board Exam Stats</button>
+            </div>
             <div style="margin: 20px 0;">
                 <button class="btn btn-primary" onclick="app.showAnalyticsChart('bar')">📊 Bar Chart</button>
                 <button class="btn btn-primary" onclick="app.showAnalyticsChart('pie')">🥧 Pie Chart</button>
@@ -1277,13 +1497,14 @@
 <!-- View Bank Modal -->
 <div id="viewModal" class="modal">
     <div class="modal-content" style="max-width: 900px;">
-        <div class="modal-header">
-            <h2 id="viewBankTitle" style="margin: 0;">View Test Bank</h2>
-            <button class="modal-close-btn" onclick="app.closeViewModal()">×</button>
-        </div>
-        <div class="input-group" style="margin-bottom: 20px;">
-            <label>🔍 Search Questions</label>
-            <input type="text" id="viewSearchInput" placeholder="Type to search questions or answers..." oninput="app.filterViewQuestions()">
+        <div class="modal-header" style="display: block;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 id="viewBankTitle" style="margin: 0;">View Test Bank</h2>
+                <button class="modal-close-btn" onclick="app.closeViewModal()">×</button>
+            </div>
+            <div class="input-group" style="margin-bottom: 0;">
+                <input type="text" id="viewSearchInput" placeholder="🔍 Search questions or answers..." oninput="app.filterViewQuestions()" style="margin: 0;">
+            </div>
         </div>
         <div id="viewQuestionsList"></div>
         <div id="viewNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
@@ -1295,9 +1516,14 @@
 <!-- Edit Bank Modal -->
 <div id="editModal" class="modal">
     <div class="modal-content" style="max-width: 900px;">
-        <div class="modal-header">
-            <h2 id="editBankTitle" style="margin: 0;">Edit Test Bank</h2>
-            <button class="modal-close-btn" onclick="app.closeEditModal()">×</button>
+        <div class="modal-header" style="display: block;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 id="editBankTitle" style="margin: 0;">Edit Test Bank</h2>
+                <button class="modal-close-btn" onclick="app.closeEditModal()">×</button>
+            </div>
+            <div class="input-group" style="margin-bottom: 0;">
+                <input type="text" id="editSearchInput" placeholder="🔍 Search questions or answers..." oninput="app.filterEditQuestions()" style="margin: 0;">
+            </div>
         </div>
         
         <div class="input-group">
@@ -1315,10 +1541,6 @@
         </button>
         
         <h3 style="margin-top: 30px;">Existing Questions</h3>
-        <div class="input-group" style="margin-bottom: 20px;">
-            <label>🔍 Search Questions</label>
-            <input type="text" id="editSearchInput" placeholder="Type to search questions or answers..." oninput="app.filterEditQuestions()">
-        </div>
         <div id="editQuestionsList"></div>
         <div id="editNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
             No questions found matching your search.
@@ -1350,6 +1572,20 @@
                 timerInterval: null,
                 immediateMode: true,
                 isActive: false
+            };
+            this.examLocked = false;
+            this.gameState = {
+                currentIndex: 0,
+                score: 0,
+                streak: 0,
+                maxStreak: 0,
+                correctAnswers: 0,
+                wrongAnswers: 0,
+                timePerQuestion: 15000,
+                questionStartTime: null,
+                timerInterval: null,
+                isActive: false,
+                answers: []
             };
             
             this.init();
@@ -2202,6 +2438,9 @@
                 isActive: true
             };
 
+            this.examLocked = true; // Lock the exam
+            this.highlightActiveTab(); // Visual indicator
+
             document.getElementById('quizSettings').style.display = 'none';
             document.getElementById('quizContainer').style.display = 'block';
 
@@ -2287,6 +2526,7 @@
         exitQuiz() {
             if (confirm('Are you sure you want to exit the exam? Your progress will not be saved.')) {
                 this.quizState.isActive = false;
+                this.examLocked = false; // Unlock when user exits
                 if (this.quizState.timerInterval) {
                     clearInterval(this.quizState.timerInterval);
                 }
@@ -2356,9 +2596,10 @@
             }
         }
 
-        endQuiz() {
+        async endQuiz() {
             this.quizState.isActive = false;
-            
+            this.examLocked = false; // Unlock when exam ends
+            this.removeTabHighlight(); // Remove visual indicator
             if (this.quizState.timerInterval) {
                 clearInterval(this.quizState.timerInterval);
                 const timer = document.getElementById('quizTimer');
@@ -2742,6 +2983,25 @@
         // ============================================
 
         switchTab(tab) {
+            // Check if exam is locked
+            if (this.examLocked && tab !== 'take') {
+                // Show prominent warning
+                const warningDiv = document.createElement('div');
+                warningDiv.className = 'feedback-overlay';
+                warningDiv.innerHTML = `
+                    <div class="feedback-content" style="background: white; max-width: 400px;">
+                        <div style="font-size: 4em; margin-bottom: 20px;">⚠️</div>
+                        <h2 style="color: #dc3545; margin-bottom: 15px;">Board Exam Ongoing!</h2>
+                        <p style="color: #495057; margin-bottom: 25px;">Please stay focused on your exam. You cannot switch tabs until you complete or exit the exam.</p>
+                        <button class="btn btn-primary" onclick="this.closest('.feedback-overlay').remove()">
+                            OK, Continue Exam
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(warningDiv);
+                return;
+            }
+
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
@@ -2752,6 +3012,9 @@
                 this.updateAnalytics();
             } else if (tab === 'take') {
                 this.updateSelectOptions();
+            } else if (tab === 'game') {
+                this.updateGameSelectOptions();
+                this.updateGameAnalytics();
             } else if (tab === 'study') {
                 // Update study mode select options
                 const select = document.getElementById('studySelectBank');
@@ -2871,8 +3134,522 @@
             prevBtn.style.opacity = prevBtn.disabled ? '0.5' : '1';
             nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
         }
-    }
 
+        // ============================================
+        // QUIZ GAME MODE
+        // ============================================
+
+        updateGameSelectOptions() {
+            const select = document.getElementById('gameSelectBank');
+            if (!select) return;
+            
+            select.innerHTML = '<option value="">Choose a test bank...</option>';
+            
+            Object.keys(this.testBanks).forEach(key => {
+                const bank = this.testBanks[key];
+                if (bank.questions && bank.questions.length > 0) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = `${bank.title} (${bank.questions.length} questions)`;
+                    select.appendChild(option);
+                }
+            });
+        }
+
+        loadGameSettings() {
+            const selected = document.getElementById('gameSelectBank').value;
+            const settings = document.getElementById('gameSettings');
+            
+            if (selected) {
+                settings.style.display = 'block';
+            } else {
+                settings.style.display = 'none';
+            }
+        }
+
+        toggleTimeSelector() {
+            const checkbox = document.getElementById('gameTimerEnabled');
+            const selector = document.getElementById('timePerQuestionSelector');
+            selector.style.display = checkbox.checked ? 'block' : 'none';
+        }
+
+        startGame() {
+            const selected = document.getElementById('gameSelectBank').value;
+            if (!selected) return;
+
+            const bank = this.testBanks[selected];
+            const questionCount = document.getElementById('gameQuestionCount').value;
+            
+            let questions = this.shuffleArray([...bank.questions]);
+            if (questionCount !== 'all') {
+                questions = questions.slice(0, parseInt(questionCount));
+            }
+
+            this.currentGameBank = bank;
+            this.currentGameBankKey = selected;
+            this.currentGameQuestions = questions;
+            
+            this.gameState = {
+                currentIndex: 0,
+                score: 0,
+                streak: 0,
+                maxStreak: 0,
+                correctAnswers: 0,
+                wrongAnswers: 0,
+                timePerQuestion: parseInt(document.getElementById('gameTimePerQuestion').value) * 1000,
+                totalQuestions: questions.length,
+                pointsPerQuestion: Math.round(100 / questions.length),
+                questionStartTime: Date.now(),
+                timerInterval: null,
+                isActive: true,
+                answers: [],
+                startTime: Date.now()
+            };
+
+            document.getElementById('gameSettings').style.display = 'none';
+            document.getElementById('gameContainer').style.display = 'block';
+            document.getElementById('gameAnalytics').style.display = 'none'; // Hide stats during game
+
+            if (document.getElementById('gameTimerEnabled').checked) {
+                this.startGameTimer();
+            }
+
+            this.showGameQuestion();
+        }
+
+        startGameTimer() {
+            const timerDiv = document.createElement('div');
+            timerDiv.id = 'gameTimer';
+            timerDiv.className = 'timer';
+            timerDiv.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+            timerDiv.style.color = 'white';
+            document.body.appendChild(timerDiv);
+
+            this.gameState.timerInterval = setInterval(() => {
+                if (!this.gameState.isActive) {
+                    clearInterval(this.gameState.timerInterval);
+                    const timer = document.getElementById('gameTimer');
+                    if (timer) timer.remove();
+                    return;
+                }
+
+                const elapsed = Date.now() - this.gameState.questionStartTime;
+                const remaining = this.gameState.timePerQuestion - elapsed;
+
+                if (remaining <= 0) {
+                    this.submitGameAnswer(null, true); // Auto-submit as wrong
+                    return;
+                }
+
+                const secs = Math.ceil(remaining / 1000);
+                timerDiv.textContent = `⏱️ ${secs}s`;
+
+                if (remaining < 5000) {
+                    timerDiv.classList.add('warning');
+                } else {
+                    timerDiv.classList.remove('warning');
+                }
+            }, 100);
+        }
+
+        showGameQuestion() {
+            const container = document.getElementById('gameContainer');
+            const q = this.currentGameQuestions[this.gameState.currentIndex];
+            const progress = ((this.gameState.currentIndex + 1) / this.currentGameQuestions.length) * 100;
+
+            container.innerHTML = `
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 12px; color: white; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.5em;">🎮 Score: ${this.gameState.score}</h3>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">🔥 Streak: ${this.gameState.streak} | Best: ${this.gameState.maxStreak}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <p style="margin: 0; font-size: 1.2em;">Question ${this.gameState.currentIndex + 1}/${this.currentGameQuestions.length}</p>
+                            <p style="margin: 5px 0 0 0; opacity: 0.9;">✅ ${this.gameState.correctAnswers} | ❌ ${this.gameState.wrongAnswers}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progress}%"></div>
+                </div>
+
+                <div style="text-align: right; margin-bottom: 10px;">
+                    <button class="btn btn-danger" onclick="app.exitGame()" style="min-width: auto; padding: 8px 16px;">❌ Exit Game</button>
+                </div>
+
+                <div class="quiz-question">
+                    <h3 style="font-size: 1.3em; margin-bottom: 20px;">${q.question}</h3>
+                    <div class="quiz-options">
+                        ${q.options.map((opt, i) => `
+                            <div class="quiz-option" onclick="app.selectGameAnswer('${String.fromCharCode(65 + i)}', this)">
+                                <input type="radio" name="gameAnswer" value="${String.fromCharCode(65 + i)}" id="gameOpt${i}">
+                                <label for="gameOpt${i}">${String.fromCharCode(65 + i)}. ${opt}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn btn-primary" onclick="app.submitGameAnswerManual()" style="margin-top: 20px; width: 100%;">
+                        ✓ Submit Answer
+                    </button>
+                </div>
+            `;
+        }
+
+        selectGameAnswer(answer, element) {
+            document.querySelectorAll('.quiz-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            document.querySelector(`input[value="${answer}"]`).checked = true;
+        }
+
+        submitGameAnswerManual() {
+            const selected = document.querySelector('input[name="gameAnswer"]:checked');
+            if (!selected) {
+                this.showToast('Please select an answer first!', 'warning');
+                return;
+            }
+            this.submitGameAnswer(selected.value, false);
+        }
+
+        submitGameAnswer(answer, timeExpired) {
+            if (!this.gameState.isActive) return;
+
+            const q = this.currentGameQuestions[this.gameState.currentIndex];
+            const isCorrect = answer === q.correct;
+            
+            // Calculate points based on speed
+            // const timeTaken = Date.now() - this.gameState.questionStartTime; -->
+            // const timeBonus = timeExpired ? 0 : Math.max(0, Math.floor((this.gameState.timePerQuestion - timeTaken) / 1000));
+            
+            if (isCorrect) {
+                this.gameState.correctAnswers++;
+                this.gameState.streak++;
+                this.gameState.maxStreak = Math.max(this.gameState.streak, this.gameState.maxStreak);
+                
+                // Simple point system: fixed points per question
+                const points = this.gameState.pointsPerQuestion;
+                this.gameState.score += points;
+                
+                this.showGameFeedback(true, points);
+            } else {
+                this.gameState.wrongAnswers++;
+                this.gameState.streak = 0;
+                this.showGameFeedback(false, 0);
+            }
+
+            this.gameState.answers.push({
+                questionId: q.id,
+                selected: answer,
+                correct: q.correct,
+                isCorrect: isCorrect,
+                timeTaken: timeTaken,
+                timeExpired: timeExpired
+            });
+        }
+
+        showGameFeedback(isCorrect, points) {
+            const options = document.querySelectorAll('.quiz-option');
+            const correct = this.currentGameQuestions[this.gameState.currentIndex].correct;
+
+            options.forEach((opt, i) => {
+                const letter = String.fromCharCode(65 + i);
+                if (letter === correct) {
+                    opt.classList.add('correct');
+                } else if (opt.querySelector('input').checked && !isCorrect) {
+                    opt.classList.add('incorrect');
+                }
+                opt.style.pointerEvents = 'none';
+            });
+
+            // Show floating points
+            if (isCorrect && points > 0) {
+                const floatingPoints = document.createElement('div');
+                floatingPoints.textContent = `+${points}`;
+                floatingPoints.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    font-size: 4em;
+                    font-weight: bold;
+                    color: #28a745;
+                    z-index: 10000;
+                    animation: floatUp 1.2s ease-out;
+                    pointer-events: none;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                    background: rgba(255, 255, 255, 0.9);
+                    padding: 20px 40px;
+                    border-radius: 15px;
+                    border: 3px solid #28a745;
+                `;
+                document.body.appendChild(floatingPoints);
+                setTimeout(() => floatingPoints.remove(), 1200);
+            }
+
+            setTimeout(() => {
+                this.nextGameQuestion();
+            }, 1500);
+        }
+
+        nextGameQuestion() {
+            this.gameState.currentIndex++;
+            
+            if (this.gameState.currentIndex < this.currentGameQuestions.length) {
+                this.gameState.questionStartTime = Date.now();
+                this.showGameQuestion();
+            } else {
+                this.endGame();
+            }
+        }
+
+        endGame() {
+            this.gameState.isActive = false;
+            
+            if (this.gameState.timerInterval) {
+                clearInterval(this.gameState.timerInterval);
+                const timer = document.getElementById('gameTimer');
+                if (timer) timer.remove();
+            }
+
+            const totalTime = Date.now() - this.gameState.startTime;
+            const accuracy = ((this.gameState.correctAnswers / this.currentGameQuestions.length) * 100).toFixed(1);
+
+            // Save game stats
+            if (!this.currentGameBank.gameAttempts) {
+                this.currentGameBank.gameAttempts = [];
+            }
+
+            this.currentGameBank.gameAttempts.push({
+                date: new Date().toISOString(),
+                score: this.gameState.score,
+                correct: this.gameState.correctAnswers,
+                wrong: this.gameState.wrongAnswers,
+                total: this.currentGameQuestions.length,
+                accuracy: accuracy,
+                maxStreak: this.gameState.maxStreak,
+                duration: totalTime,
+                answers: this.gameState.answers
+            });
+
+            this.saveData();
+
+            let rank = '';
+            if (accuracy >= 90) rank = '🏆 MASTER';
+            else if (accuracy >= 80) rank = '🥇 EXPERT';
+            else if (accuracy >= 70) rank = '🥈 PROFICIENT';
+            else if (accuracy >= 60) rank = '🥉 COMPETENT';
+            else rank = '📚 LEARNER';
+
+            const container = document.getElementById('gameContainer');
+            container.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <div style="font-size: 4em; margin-bottom: 10px;">🎮</div>
+                    <h2 style="font-size: 2em; margin-bottom: 5px;">Game Over!</h2>
+                    <div style="font-size: 1.2em; color: #667eea; margin-bottom: 20px;">${rank}</div>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 500px; margin: 0 auto 20px auto;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 1.8em; font-weight: bold;">${this.gameState.score}</div>
+                            <div style="font-size: 0.85em; opacity: 0.9;">Score</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 1.8em; font-weight: bold;">${accuracy}%</div>
+                            <div style="font-size: 0.85em; opacity: 0.9;">Accuracy</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 15px; border-radius: 10px;">
+                            <div style="font-size: 1.8em; font-weight: bold;">${this.gameState.maxStreak}</div>
+                            <div style="font-size: 0.85em; opacity: 0.9;">Max Streak</div>
+                        </div>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin: 15px auto; text-align: left; max-width: 500px;">
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #dee2e6;">
+                            <span style="color: #495057;">✅ Correct:</span>
+                            <strong style="color: #495057;">${this.gameState.correctAnswers}/${this.currentGameQuestions.length}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #dee2e6;">
+                            <span style="color: #495057;">❌ Wrong:</span>
+                            <strong style="color: #495057;">${this.gameState.wrongAnswers}</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding: 8px 0;">
+                            <span style="color: #495057;">⏱️ Time:</span>
+                            <strong style="color: #495057;">${Math.floor(totalTime / 60000)}m ${Math.floor((totalTime % 60000) / 1000)}s</strong>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                        <button class="btn btn-primary" onclick="app.playAgain()">🔄 Play Again</button>
+                        <button class="btn btn-secondary" onclick="app.exitGame()">🏠 Back to Menu</button>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('gameAnalytics').style.display = 'block'; // Show stats again
+            this.updateGameAnalytics();
+        }
+
+        playAgain() {
+            document.getElementById('gameSelectBank').value = this.currentGameBankKey;
+            this.loadGameSettings();
+            document.getElementById('gameContainer').style.display = 'none';
+            this.startGame();
+        }
+
+        exitGame() {
+            if (this.gameState.isActive) {
+                if (!confirm('Are you sure you want to exit? Your progress will be lost.')) {
+                    return;
+                }
+            }
+            
+            this.gameState.isActive = false;
+            if (this.gameState.timerInterval) {
+                clearInterval(this.gameState.timerInterval);
+            }
+            const timer = document.getElementById('gameTimer');
+            if (timer) timer.remove();
+            
+            document.getElementById('gameContainer').style.display = 'none';
+            document.getElementById('gameSettings').style.display = 'none';
+            document.getElementById('gameSelectBank').value = '';
+            document.getElementById('gameAnalytics').style.display = 'block'; // Show stats again
+        }
+
+        updateGameAnalytics() {
+            const content = document.getElementById('gameStatsContent');
+            let html = '';
+
+            let totalGames = 0;
+            let totalScore = 0;
+            let bestScore = 0;
+            let bestStreak = 0;
+
+            Object.values(this.testBanks).forEach(bank => {
+                if (bank.gameAttempts && bank.gameAttempts.length > 0) {
+                    totalGames += bank.gameAttempts.length;
+                    bank.gameAttempts.forEach(attempt => {
+                        totalScore += attempt.score;
+                        bestScore = Math.max(bestScore, attempt.score);
+                        bestStreak = Math.max(bestStreak, attempt.maxStreak);
+                    });
+                }
+            });
+
+            const avgScore = totalGames > 0 ? Math.round(totalScore / totalGames) : 0;
+
+            if (totalGames === 0) {
+                content.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">No games played yet. Start a game to see your stats!</p>';
+                return;
+            }
+
+            html += '<div class="stats-grid">';
+            html += `
+                <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                    <h3>${totalGames}</h3>
+                    <p>Games Played</p>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    <h3>${avgScore}</h3>
+                    <p>Avg Score</p>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                    <h3>${bestScore}</h3>
+                    <p>Best Score</p>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                    <h3>${bestStreak}</h3>
+                    <p>Best Streak</p> 
+                </div> `; 
+            html += '</div>';
+            html += '<h4 style="margin-top: 40px;">Performance by Test Bank</h4>';
+
+            Object.values(this.testBanks).forEach(bank => {
+                if (bank.gameAttempts && bank.gameAttempts.length > 0) {
+                    const avgBankScore = Math.round(
+                        bank.gameAttempts.reduce((sum, att) => sum + att.score, 0) / bank.gameAttempts.length
+                    );
+                    const avgAccuracy = (
+                        bank.gameAttempts.reduce((sum, att) => sum + parseFloat(att.accuracy), 0) / bank.gameAttempts.length
+                    ).toFixed(1);
+                    const bestBankScore = Math.max(...bank.gameAttempts.map(att => att.score));
+
+                    html += `
+                        <div class="analytics-detail" style="padding: 15px;">
+                            <h4 style="margin-bottom: 10px;">${bank.title}</h4>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                                <div style="text-align: center; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+                                    <div style="font-size: 1.5em; font-weight: bold; color: #667eea;">${bestBankScore}</div>
+                                    <div style="font-size: 0.85em; color: #6c757d;">Best Score</div>
+                                </div>
+                                <div style="text-align: center; padding: 10px; background: rgba(23, 162, 184, 0.1); border-radius: 8px;">
+                                    <div style="font-size: 1.5em; font-weight: bold; color: #17a2b8;">${avgAccuracy}%</div>
+                                    <div style="font-size: 0.85em; color: #6c757d;">Avg Accuracy</div>
+                                </div>
+                                <div style="text-align: center; padding: 10px; background: rgba(108, 117, 125, 0.1); border-radius: 8px;">
+                                    <div style="font-size: 1.5em; font-weight: bold; color: #6c757d;">${bank.gameAttempts.length}</div>
+                                    <div style="font-size: 0.85em; color: #6c757d;">Games</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            content.innerHTML = html;
+        }
+
+        clearGameStats() {
+            if (!confirm('Are you sure you want to delete ALL game statistics? This cannot be undone!')) {
+                return;
+            }
+
+            Object.values(this.testBanks).forEach(bank => {
+                if (bank.gameAttempts) {
+                    bank.gameAttempts = [];
+                }
+            });
+
+            this.saveData();
+            this.updateGameAnalytics();
+            this.showToast('✅ Game statistics cleared!', 'success');
+        }
+
+        clearBoardStats() {
+            if (!confirm('Are you sure you want to delete ALL Board Exam statistics? This cannot be undone!')) {
+                return;
+            }
+
+            Object.values(this.testBanks).forEach(bank => {
+                if (bank.attempts) {
+                    bank.attempts = [];
+                }
+            });
+
+            this.saveData();
+            this.updateAnalytics();
+            this.showToast('✅ Board Exam statistics cleared!', 'success');
+        }
+
+        highlightActiveTab() {
+            // Add visual indicator that exam is locked
+            const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Board Exam Mode tab
+            if (takeTab) {
+                takeTab.style.animation = 'pulse 2s infinite';
+                takeTab.style.boxShadow = '0 0 20px rgba(220, 53, 69, 0.6)';
+            }
+        }
+
+        removeTabHighlight() {
+            // Remove visual indicator
+            const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Board Exam Mode tab
+            if (takeTab) {
+                takeTab.style.animation = '';
+                takeTab.style.boxShadow = '';
+            }
+        }
+    }
     // Initialize the app
     const app = new QuizMasterApp();
 </script>
