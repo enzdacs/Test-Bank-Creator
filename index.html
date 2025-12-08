@@ -329,11 +329,39 @@
             margin-bottom: 20px;
         }
 
+        .input-group h2 {
+            margin-bottom: 8px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group h2 {
+            margin-bottom: 8px;
+        }
+
         .input-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
             color: #495057;
+        }
+
+        .content h2 {
+            margin-bottom: 8px;
+        }
+
+        .content h2 + .input-group {
+            margin-top: 0;
+        }
+
+        .content h2 {
+            margin-bottom: 8px;
+        }
+
+        .content h2 + .input-group {
+            margin-top: 0;
         }
 
         body.dark-mode .input-group label {
@@ -369,7 +397,7 @@
         .input-group textarea {
             min-height: 150px;
             font-family: monospace;
-            resize: vertical;
+            resize: none;
         }
 
         .test-bank-list {
@@ -1216,6 +1244,15 @@
             input, textarea, select {
                 font-size: 16px !important; /* Prevents zoom on iOS */
             }
+
+            .test-bank-card > div {
+                grid-template-columns: 1fr !important;
+            }
+
+            .test-bank-card .btn {
+                width: 100%;
+                justify-content: center;
+            }
         }
 
         @media (max-width: 480px) {
@@ -1299,19 +1336,23 @@
     <div class="content">
         <!-- Manage Test Banks Tab -->
         <div id="manage" class="tab-content active">
-            <h2>Create New Test Bank</h2>
+            <h2>Create New Test Bank <span style="font-size: 0.7em; color: #6c757d; font-weight: normal;">(Enter Bank Title)</span></h2>
             <div class="input-group">
-                <label>Test Bank Title</label>
-                <input type="text" id="bankTitle" placeholder="e.g., Cluster 1, Exam, Posi">
+                <input type="text" id="bankTitle" placeholder="e.g., Cluster 1, Exam, Posi" oninput="app.toggleQuestionsInput()">
             </div>
-            <div class="input-group">
-                <label>Paste Questions (Each option on new line, separate questions with blank line, mark letter with * as correct answer)</label>
-                <textarea id="questionsInput" placeholder="Q#: Question Text.&#10;A. Option 1&#10;B. Option 2&#10;C. Option 3&#10;*D. Correct answer&#10;&#10;Q#: Question Text.&#10;A. Option 1&#10;*B. Correct answer&#10;C. Option 3&#10;D. Option 4"></textarea>
+            <div class="input-group" id="questionsInputGroup" style="display: none;">
+                <label>Paste Questions <span style="font-weight: normal; color: #6c757d;">(Follow the sample format below)</span></label>
+                <textarea id="questionsInput" placeholder="Q1: Question Text.&#10;A. Option 1&#10;B. Option 2&#10;C. Option 3&#10;*D. Correct answer&#10;&#10;Q2: Next Question Text.&#10;A. Option 1&#10;*B. Correct answer&#10;C. Option 3&#10;D. Option 4"></textarea>
             </div>
-            <button class="btn btn-primary" onclick="app.bulkAddQuestions()">Add Questions (Bulk)</button>
-            <button class="btn btn-success" onclick="app.saveTestBank()">Save Test Bank</button>
-            <button class="btn btn-secondary" onclick="app.exportAllData()">📤 Export All</button>
-            <button class="btn btn-secondary" onclick="app.showImportModal()">📥 Import</button>
+            <div class="input-group" id="questionsInputGroup" style="display: none;">
+                <h2 style="margin-bottom: 8px;">Paste Questions <span style="font-size: 0.7em; color: #6c757d; font-weight: normal;">(Follow the sample format below)</span></h2>
+                <textarea id="questionsInput" placeholder="Q1: Question Text.&#10;A. Option 1&#10;B. Option 2&#10;C. Option 3&#10;*D. Correct answer&#10;&#10;Q2: Next Question Text.&#10;A. Option 1&#10;*B. Correct answer&#10;C. Option 3&#10;D. Option 4"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch;">
+                <button class="btn btn-primary" onclick="app.bulkAddQuestions()">➕ Add Questions/Save Test Bank</button>
+                <button class="btn btn-secondary" onclick="app.exportAllData()" style="flex: 1; min-width: 140px;">📤 Export All</button>
+                <button class="btn btn-secondary" onclick="app.showImportModal()" style="flex: 1; min-width: 140px;">📥 Import</button>
+            </div>
             <input type="file" id="importFile" accept=".json" style="display: none;" onchange="app.importData(event)">
 
             <h2 style="margin-top: 40px;">Your Test Banks</h2>
@@ -1835,6 +1876,17 @@
         // TEST BANK MANAGEMENT
         // ============================================
 
+        toggleQuestionsInput() {
+            const bankTitle = document.getElementById('bankTitle').value.trim();
+            const questionsInputGroup = document.getElementById('questionsInputGroup');
+            
+            if (bankTitle) {
+                questionsInputGroup.style.display = 'block';
+            } else {
+                questionsInputGroup.style.display = 'none';
+            }
+        }
+
         bulkAddQuestions() {
             const title = document.getElementById('bankTitle').value.trim();
             const text = document.getElementById('questionsInput').value.trim();
@@ -1880,16 +1932,12 @@
                 this.updateSelectOptions();
                 
                 document.getElementById('questionsInput').value = '';
+                document.getElementById('bankTitle').value = '';
+                document.getElementById('questionsInputGroup').style.display = 'none';
                 
                 this.hideLoading();
                 this.showToast(`✅ ${questions.length} question(s) added! Total: ${this.testBanks[title].questions.length}`, 'success');
             }, 100);
-        }
-
-        saveTestBank() {
-            if (this.saveData()) {
-                this.showToast('Test bank saved successfully!', 'success');
-            }
         }
 
         updateTestBankList() {
@@ -1914,13 +1962,14 @@
                     <p>📝 ${bank.questions.length} questions</p>
                     <p>📊 ${bank.attempts.length} attempts</p>
                     <p>⭐ Avg Score: ${avgScore}</p>
-                    <div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px;">
-                        <button class="btn btn-primary" onclick="app.viewBank('${key.replace(/'/g, "\\'")}');" style="background: #28a745;">👁️ View</button>
-                        <button class="btn btn-primary" onclick="app.editBank('${key.replace(/'/g, "\\'")}');" style="background: #17a2b8;">✏️ Edit</button>
-                        <button class="btn btn-primary" onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}');" style="background: #667eea;">🔗 Share</button>
-                        <button class="btn btn-danger" onclick="app.deleteBank('${key.replace(/'/g, "\\'")}');">🗑️ Delete</button>
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <button class="btn btn-primary" onclick="app.viewBank('${key.replace(/'/g, "\\'")}');" style="background: #28a745; padding: 10px; font-size: 0.9em;">👁️ View</button>
+                        <button class="btn btn-primary" onclick="app.editBank('${key.replace(/'/g, "\\'")}');" style="background: #17a2b8; padding: 10px; font-size: 0.9em;">✏️ Edit</button>
+                        <button class="btn btn-primary" onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}');" style="background: #667eea; padding: 10px; font-size: 0.9em;">🔗 Share</button>
+                        <button class="btn btn-danger" onclick="app.deleteBank('${key.replace(/'/g, "\\'")}');" style="padding: 10px; font-size: 0.9em;">🗑️ Delete</button>
                     </div>
                 `;
+
                 list.appendChild(card);
             });
 
@@ -2052,8 +2101,8 @@
                 questionDiv.style.cssText = 'background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #667eea;';
                 questionDiv.innerHTML = `
                     <div style="margin-bottom: 10px;">
-                        <strong>Q${index + 1}:</strong>
-                        <textarea style="width: 100%; margin-top: 5px; padding: 8px;" id="q-text-${index}">${q.question}</textarea>
+                        <strong style="font-size: 1em;">Q${index + 1}:</strong>
+                        <textarea style="width: 100%; margin-top: 5px; padding: 8px; resize: none; font-family: inherit; font-size: 1em;" id="q-text-${index}">${q.question}</textarea>
                     </div>
                     <div style="margin-top: 10px;">
                         ${q.options.map((opt, i) => {
@@ -2203,6 +2252,10 @@
         exportAllData() {
             if (Object.keys(this.testBanks).length === 0) {
                 this.showToast('No test banks to export', 'warning');
+                return;
+            }
+
+            if (!confirm('Export all test banks as JSON file?')) {
                 return;
             }
 
