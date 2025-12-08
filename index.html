@@ -143,10 +143,16 @@
             color: #b0b0b0 !important;
         }
 
-        body.dark-mode .analytics-row span,
+        .analytics-row span,
+        .analytics-row strong {
+            color: inherit;
+        }
+
+        /* body.dark-mode .analytics-row span,
         body.dark-mode .analytics-row strong {
             color: #000000 !important;
         }
+        */
 
         .theme-toggle {
             position: fixed;
@@ -170,6 +176,78 @@
         .theme-toggle:hover {
             transform: scale(1.1);
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .clock-toggle {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2em;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s, box-shadow 0.3s;
+        }
+
+        body.dark-mode .clock-toggle {
+            background: #1a1a2e;
+        }
+
+        .clock-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        .clock-widget {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 999;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            min-width: 200px;
+            text-align: center;
+            transition: all 0.3s;
+            display: none;
+        }
+
+        .clock-widget.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        body.dark-mode .clock-widget {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid #667eea;
+        }
+
+        .clock-widget:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
+        }
+
+        @media (max-width: 768px) {
+            .clock-widget {
+                top: 10px;
+                left: 10px;
+                padding: 8px 12px;
+                font-size: 1em;
+            }
+
+            .clock-widget #currentTime {
+                font-size: 1em !important;
+            }
+
+            .clock-widget #currentDate {
+                font-size: 0.75em !important;
+            }
         }
 
         .container {
@@ -422,6 +500,18 @@
             box-shadow: 0 10px 25px rgba(0,0,0,0.15);
             border-color: #667eea;
         }
+        
+        /* new addition */
+        .test-bank-card button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .test-bank-card button:active {
+            transform: translateY(0);
+        }
+
+        /* new addition */
 
         body.dark-mode .test-bank-card {
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
@@ -795,9 +885,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            position: sticky;
-            top: -30px;
+            margin-bottom: 0;
+            position: relative;
             background: white;
             padding: 10px 0;
             z-index: 10;
@@ -833,105 +922,16 @@
         }
 
         .modal-footer {
-            position: sticky;
-            bottom: -30px;
+            position: relative;
             background: white;
             padding: 15px 0;
             border-top: 2px solid #dee2e6;
-            margin-top: 20px;
+            margin-top: 0;
         }
 
         body.dark-mode .modal-footer {
             background: #0f3460;
             border-top-color: #2a2a3e;
-        }
-
-        .bg-settings {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-
-        .bg-settings-btn {
-            background: white;
-            border: none;
-            padding: 12px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 1.5em;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            transition: all 0.3s;
-        }
-
-        .bg-settings-btn:hover {
-            transform: scale(1.1) rotate(90deg);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        }
-
-        .bg-settings-btn:active {
-            transform: scale(1) rotate(90deg);
-        }
-
-        body.dark-mode .bg-settings-btn {
-            background: #1a1a2e;
-        }
-
-        .bg-menu {
-            display: none;
-            position: absolute;
-            bottom: 60px;
-            right: 0;
-            background: white;
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-            min-width: 250px;
-            border: 1px solid #dee2e6;
-        }
-
-        body.dark-mode .bg-menu {
-            background: #0f3460;
-            border-color: #2a2a3e;
-        }
-
-        .bg-menu.active {
-            display: block;
-            animation: slideUp 0.3s;
-        }
-
-        .color-picker-item {
-            display: flex;
-            align-items: center;
-            margin: 10px 0;
-            padding: 8px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid transparent;
-        }
-
-        .color-picker-item:hover {
-            background: #f0f0f0;
-            border-color: #667eea;
-            transform: translateX(5px);
-        }
-
-        body.dark-mode .color-picker-item:hover {
-            background: #1a1a2e;
-            border-color: #87CEEB;
-        }
-
-        .color-preview {
-            width: 30px;
-            height: 30px;
-            border-radius: 6px;
-            margin-right: 10px;
-            border: 2px solid #ddd;
-        }
-
-        body.dark-mode .color-preview {
-            border-color: #2a2a3e;
         }
 
         .loading-overlay {
@@ -1144,6 +1144,27 @@
             }
         }
 
+        /* CONFETTI
+
+        @keyframes confettiFall {
+            0% {
+                top: -10px;
+                opacity: 1;
+            }
+            100% {
+                top: 100vh;
+                opacity: 0;
+                transform: translateX(100px) rotate(720deg);
+            }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        */
+
         /* Mobile Responsive Styles */
         @media (max-width: 768px) {
             body {
@@ -1288,35 +1309,18 @@
     </style>
 </head>
 <body>
+    <button class="clock-toggle" onclick="app.toggleClock()" title="Toggle Clock">🕐</button>
     <button class="theme-toggle" onclick="app.toggleDarkMode()" title="Toggle Dark Mode">🌓</button>
-    
-    <div class="bg-settings">
-        <button class="bg-settings-btn" onclick="app.toggleBgMenu()" title="Background Settings">🎨</button>
-        <div class="bg-menu" id="bgMenu">
-            <h4 style="margin-bottom: 10px;">Background</h4>
-            <div class="color-picker-item" onclick="app.setBackground('default')">
-            <div class="color-preview" style="background: linear-gradient(135deg, #87CEEB 0%, #4A90E2 100%);"></div>
-                <span>Default Theme</span>
-            </div>
-            <div class="color-picker-item" onclick="app.setBackground('purple')">
-                <div class="color-preview" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"></div>
-                <span>Purple Gradient</span>
-            </div>
-            <div class="color-picker-item" onclick="app.setBackground('sunset')">
-                <div class="color-preview" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);"></div>
-                <span>Sunset Pink</span>
-            </div>
-            <div class="color-picker-item" onclick="app.setBackground('ocean')">
-                <div class="color-preview" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"></div>
-                <span>Ocean Blue</span>
-            </div>
-            <div class="color-picker-item" onclick="app.setBackground('forest')">
-                <div class="color-preview" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);"></div>
-                <span>Forest Green</span>
-            </div>
-            <hr style="margin: 10px 0;">
-            <label style="display: block; margin: 10px 0; font-size: 0.9em;">Upload Image:</label>
-            <input type="file" id="bgImageInput" accept="image/*" onchange="app.uploadBackgroundImage()" style="font-size: 0.85em;">
+    <div class="clock-widget" id="clockWidget">
+        <div id="currentTime" style="font-size: 1.2em; font-weight: bold; margin-bottom: 5px;"></div>
+        <div id="currentDate" style="font-size: 0.85em; opacity: 0.9; margin-bottom: 10px;"></div>
+        <div style="border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
+            <div style="font-size: 0.8em; font-weight: bold; margin-bottom: 5px;">🎓 RTLE 2025 DAY 1</div>
+            <div id="countdown1" style="font-size: 1em; font-weight: bold;"></div>
+        </div>
+        <div style="border-top: 2px solid rgba(255,255,255,0.3); padding-top: 10px; margin-top: 10px;">
+            <div style="font-size: 0.8em; font-weight: bold; margin-bottom: 5px;">🎓 RTLE 2025 DAY 2</div>
+            <div id="countdown2" style="font-size: 1em; font-weight: bold;"></div>
         </div>
     </div>
     <div class="container">
@@ -1352,6 +1356,8 @@
                 <button class="btn btn-primary" onclick="app.bulkAddQuestions()">➕ Add Questions/Save Test Bank</button>
                 <button class="btn btn-secondary" onclick="app.exportAllData()" style="flex: 1; min-width: 140px;">📤 Export All</button>
                 <button class="btn btn-secondary" onclick="app.showImportModal()" style="flex: 1; min-width: 140px;">📥 Import</button>
+                <button class="btn btn-primary" onclick="app.openRRTResults()" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">🏆 RRT Results</button>
+    <button class="btn btn-primary" onclick="app.showSurprise()" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #29b157 0%, #27b49a 100%);">Secret</button>  <!--🎉 Surprise-->
             </div>
             <input type="file" id="importFile" accept=".json" style="display: none;" onchange="app.importData(event)">
 
@@ -1537,8 +1543,8 @@
 
 <!-- View Bank Modal -->
 <div id="viewModal" class="modal">
-    <div class="modal-content" style="max-width: 900px;">
-        <div class="modal-header" style="display: block;">
+    <div class="modal-content" style="max-width: 900px; display: flex; flex-direction: column; max-height: 90vh; padding: 0;">
+        <div class="modal-header" style="flex-shrink: 0; padding: 20px 30px; margin: 0; position: relative; top: 0; display: block;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2 id="viewBankTitle" style="margin: 0;">View Test Bank</h2>
                 <button class="modal-close-btn" onclick="app.closeViewModal()">×</button>
@@ -1547,17 +1553,20 @@
                 <input type="text" id="viewSearchInput" placeholder="🔍 Search questions or answers..." oninput="app.filterViewQuestions()" style="margin: 0;">
             </div>
         </div>
-        <div id="viewQuestionsList"></div>
-        <div id="viewNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
-            No questions found matching your search.
+        
+        <div style="flex: 1; overflow-y: auto; padding: 20px 30px;">
+            <div id="viewQuestionsList"></div>
+            <div id="viewNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
+                No questions found matching your search.
+            </div>
         </div>
     </div>
 </div>
 
 <!-- Edit Bank Modal -->
 <div id="editModal" class="modal">
-    <div class="modal-content" style="max-width: 900px;">
-        <div class="modal-header" style="display: block;">
+    <div class="modal-content" style="max-width: 900px; display: flex; flex-direction: column; max-height: 90vh; padding: 0;">
+        <div class="modal-header" style="flex-shrink: 0; padding: 20px 30px; margin: 0; position: relative; top: 0; display: block;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h2 id="editBankTitle" style="margin: 0;">Edit Test Bank</h2>
                 <button class="modal-close-btn" onclick="app.closeEditModal()">×</button>
@@ -1567,27 +1576,29 @@
             </div>
         </div>
         
-        <div class="input-group">
-            <label>Test Bank Name</label>
-            <input type="text" id="editBankName" placeholder="Enter new name">
+        <div style="flex: 1; overflow-y: auto; padding: 0 30px;">
+            <div class="input-group" style="margin-top: 20px;">
+                <label>Test Bank Name</label>
+                <input type="text" id="editBankName" placeholder="Enter new name">
+            </div>
+            
+            <h3 style="margin-top: 30px;">Add New Questions</h3>
+            <div class="input-group">
+                <label>Paste Questions (Same format as Manage Banks)</label>
+                <textarea id="editQuestionsInput" placeholder="Q#: Question text&#10;A. Option 1&#10;B. Option 2&#10;C. Option 3&#10;*D. Correct answer"></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="app.addQuestionsToBank()" style="width: 100%; margin-bottom: 20px;">
+                ➕ Add These Questions
+            </button>
+            
+            <h3 style="margin-top: 30px;">Existing Questions</h3>
+            <div id="editQuestionsList"></div>
+            <div id="editNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
+                No questions found matching your search.
+            </div>
         </div>
         
-        <h3 style="margin-top: 30px;">Add New Questions</h3>
-        <div class="input-group">
-            <label>Paste Questions (Same format as Manage Banks)</label>
-            <textarea id="editQuestionsInput" placeholder="Q#: Question text&#10;A. Option 1&#10;B. Option 2&#10;C. Option 3&#10;*D. Correct answer"></textarea>
-        </div>
-        <button class="btn btn-primary" onclick="app.addQuestionsToBank()" style="width: 100%; margin-bottom: 20px;">
-            ➕ Add These Questions
-        </button>
-        
-        <h3 style="margin-top: 30px;">Existing Questions</h3>
-        <div id="editQuestionsList"></div>
-        <div id="editNoResults" style="display: none; text-align: center; padding: 40px; color: #6c757d;">
-            No questions found matching your search.
-        </div>
-        
-        <div class="modal-footer">
+        <div class="modal-footer" style="flex-shrink: 0; padding: 15px 30px; margin: 0; position: relative; bottom: 0;">
             <button class="btn btn-success" onclick="app.saveEditedBank()">💾 Save Changes</button>
             <button class="btn btn-secondary" onclick="app.closeEditModal()">Cancel</button>
         </div>
@@ -1605,6 +1616,7 @@
             this.currentBank = null;
             this.currentQuestions = [];
             this.currentEditingBank = null;
+            this.surpriseEnabled = true;
             this.quizState = {
                 currentIndex: 0,
                 answers: [],
@@ -1635,11 +1647,15 @@
         init() {
             this.loadData();
             this.loadDarkMode();
-            this.loadCustomBackground();
+            this.loadClockState();
             this.setupEventListeners();
             this.updateTestBankList();
             this.updateSelectOptions();
             this.updateAnalytics();
+
+            // Start clock and countdown
+            this.updateClock();
+            setInterval(() => this.updateClock(), 1000);
         }
 
         setupEventListeners() {
@@ -1720,65 +1736,17 @@
             }
         }
 
-        toggleBgMenu() {
-            const menu = document.getElementById('bgMenu');
-            menu.classList.toggle('active');
+        toggleClock() {
+            const clockWidget = document.getElementById('clockWidget');
+            clockWidget.classList.toggle('active');
+            const isActive = clockWidget.classList.contains('active');
+            localStorage.setItem('clockVisible', isActive);
         }
 
-        setBackground(type) {
-            const gradients = {
-                'default': 'linear-gradient(135deg, #87CEEB 0%, #4A90E2 100%)',
-                'purple': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                'sunset': 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                'ocean': 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                'forest': 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)'
-            };
-            
-            document.body.style.backgroundImage = '';
-            document.body.style.background = gradients[type];
-            
-            if (type === 'default') {
-                localStorage.removeItem('customBg');
-                localStorage.removeItem('customBgImage');
-            } else {
-                localStorage.setItem('customBg', type);
-                localStorage.removeItem('customBgImage');
-            }
-            
-            this.toggleBgMenu();
-        }
-
-        uploadBackgroundImage() {
-            const file = document.getElementById('bgImageInput').files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const imageData = e.target.result;
-                document.body.style.background = 'none';
-                document.body.style.backgroundImage = `url(${imageData})`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundPosition = 'center';
-                document.body.style.backgroundAttachment = 'fixed';
-                localStorage.setItem('customBgImage', imageData);
-                localStorage.removeItem('customBg');
-                this.toggleBgMenu();
-            };
-            reader.readAsDataURL(file);
-        }
-
-        loadCustomBackground() {
-            const customBg = localStorage.getItem('customBg');
-            const customBgImage = localStorage.getItem('customBgImage');
-            
-            if (customBgImage) {
-                document.body.style.background = 'none';
-                document.body.style.backgroundImage = `url(${customBgImage})`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundPosition = 'center';
-                document.body.style.backgroundAttachment = 'fixed';
-            } else if (customBg) {
-                this.setBackground(customBg);
+        loadClockState() {
+            const isVisible = localStorage.getItem('clockVisible') === 'true';
+            if (isVisible) {
+                document.getElementById('clockWidget').classList.add('active');
             }
         }
 
@@ -1958,15 +1926,19 @@
                 }
                 
                 card.innerHTML = `
-                    <h3>${bank.title}</h3>
-                    <p>📝 ${bank.questions.length} questions</p>
-                    <p>📊 ${bank.attempts.length} attempts</p>
-                    <p>⭐ Avg Score: ${avgScore}</p>
-                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <button class="btn btn-primary" onclick="app.viewBank('${key.replace(/'/g, "\\'")}');" style="background: #28a745; padding: 10px; font-size: 0.9em;">👁️ View</button>
-                        <button class="btn btn-primary" onclick="app.editBank('${key.replace(/'/g, "\\'")}');" style="background: #17a2b8; padding: 10px; font-size: 0.9em;">✏️ Edit</button>
-                        <button class="btn btn-primary" onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}');" style="background: #667eea; padding: 10px; font-size: 0.9em;">🔗 Share</button>
-                        <button class="btn btn-danger" onclick="app.deleteBank('${key.replace(/'/g, "\\'")}');" style="padding: 10px; font-size: 0.9em;">🗑️ Delete</button>
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <h3 style="margin-bottom: 8px;">${bank.title}</h3>
+                            <p style="margin: 3px 0;">📝 ${bank.questions.length} questions</p>
+                            <p style="margin: 3px 0;">📊 ${bank.attempts.length} attempts</p>
+                            <p style="margin: 3px 0;">⭐ Avg: ${avgScore}</p>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
+                            <button onclick="app.viewBank('${key.replace(/'/g, "\\'")}');" title="View" style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">👁️</button>
+                            <button onclick="app.editBank('${key.replace(/'/g, "\\'")}');" title="Edit" style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">✏️</button>
+                            <button onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}');" title="Share" style="background: #667eea; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🔗</button>
+                            <button onclick="app.deleteBank('${key.replace(/'/g, "\\'")}');" title="Delete" style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🗑️</button>
+                        </div>
                     </div>
                 `;
 
@@ -2064,12 +2036,28 @@
             this.currentEditingBank = key;
             const bank = this.testBanks[key];
             
+            // Store original state for comparison
+            this.originalBankState = {
+                title: bank.title,
+                questions: JSON.parse(JSON.stringify(bank.questions))
+            };
+            
             document.getElementById('editBankTitle').textContent = bank.title;
             document.getElementById('editBankName').value = bank.title;
             document.getElementById('editQuestionsInput').value = '';
             document.getElementById('editSearchInput').value = '';
             
             this.renderEditQuestions();
+            this.updateSaveButton();
+
+            // Add event listener for title changes
+            setTimeout(() => {
+                const titleInput = document.getElementById('editBankName');
+                const questionsInput = document.getElementById('editQuestionsInput');
+                
+                titleInput.addEventListener('input', () => this.updateSaveButton());
+                questionsInput.addEventListener('input', () => this.updateSaveButton());
+            }, 100);
             
             document.getElementById('editModal').classList.add('active');
         }
@@ -2122,7 +2110,75 @@
                     </button>
                 `;
                 questionsList.appendChild(questionDiv);
+
+                // Add event listeners for change detection
+                const qTextarea = questionDiv.querySelector(`#q-text-${index}`);
+                if (qTextarea) {
+                    qTextarea.addEventListener('input', () => this.updateSaveButton());
+                }
+
+                for (let i = 0; i < 4; i++) {
+                    const optInput = questionDiv.querySelector(`#q-opt-${index}-${i}`);
+                    if (optInput) {
+                        optInput.addEventListener('input', () => this.updateSaveButton());
+                    }
+                }
+
+                const radios = questionDiv.querySelectorAll(`input[name="correct-${index}"]`);
+                radios.forEach(radio => {
+                    radio.addEventListener('change', () => this.updateSaveButton());
+                });
             });
+        }
+
+        updateSaveButton() {
+            const saveBtn = document.querySelector('#editModal .btn-success');
+            if (!saveBtn) return;
+            
+            const newTitle = document.getElementById('editBankName').value.trim();
+            const hasNewQuestions = document.getElementById('editQuestionsInput').value.trim().length > 0;
+            
+            // Check if title changed
+            const titleChanged = newTitle !== this.originalBankState.title;
+            
+            // Check if any questions were modified
+            const bank = this.testBanks[this.currentEditingBank];
+            let questionsChanged = bank.questions.length !== this.originalBankState.questions.length;
+            
+            if (!questionsChanged) {
+                for (let i = 0; i < bank.questions.length; i++) {
+                    const qTextarea = document.getElementById(`q-text-${i}`);
+                    if (qTextarea && qTextarea.value !== this.originalBankState.questions[i].question) {
+                        questionsChanged = true;
+                        break;
+                    }
+                    
+                    for (let j = 0; j < 4; j++) {
+                        const optInput = document.getElementById(`q-opt-${i}-${j}`);
+                        if (optInput && optInput.value !== this.originalBankState.questions[i].options[j]) {
+                            questionsChanged = true;
+                            break;
+                        }
+                    }
+                    
+                    const correctRadio = document.querySelector(`input[name="correct-${i}"]:checked`);
+                    if (correctRadio && correctRadio.value !== this.originalBankState.questions[i].correct) {
+                        questionsChanged = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Enable button only if something changed
+            if (titleChanged || questionsChanged || hasNewQuestions) {
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+                saveBtn.style.cursor = 'pointer';
+            } else {
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '0.5';
+                saveBtn.style.cursor = 'not-allowed';
+            }
         }
         
         filterEditQuestions() {
@@ -2171,16 +2227,59 @@
                     return;
                 }
 
-                questions.forEach(q => {
-                    this.testBanks[this.currentEditingBank].questions.push(q);
+                // Check for duplicates
+                const existingQuestions = this.testBanks[this.currentEditingBank].questions;
+                const duplicates = [];
+                const newQuestions = [];
+
+                questions.forEach(newQ => {
+                    const isDuplicate = existingQuestions.some(existingQ => {
+                        return existingQ.question.trim().toLowerCase() === newQ.question.trim().toLowerCase() &&
+                            JSON.stringify(existingQ.options) === JSON.stringify(newQ.options);
+                    });
+
+                    if (isDuplicate) {
+                        duplicates.push(newQ);
+                    } else {
+                        newQuestions.push(newQ);
+                    }
                 });
 
-                this.saveData();
-                document.getElementById('editQuestionsInput').value = '';
-                this.renderEditQuestions();
-                
-                this.hideLoading();
-                this.showToast(`✅ ${questions.length} question(s) added!`, 'success');
+                if (duplicates.length > 0) {
+                    this.hideLoading();
+                    const overwrite = confirm(`Found ${duplicates.length} duplicate question(s). Do you want to overwrite them?\n\nClick OK to overwrite, Cancel to discard duplicates.`);
+                    
+                    if (overwrite) {
+                        // Remove old duplicates and add all questions
+                        duplicates.forEach(dupQ => {
+                            const index = existingQuestions.findIndex(existingQ => 
+                                existingQ.question.trim().toLowerCase() === dupQ.question.trim().toLowerCase()
+                            );
+                            if (index !== -1) {
+                                existingQuestions.splice(index, 1);
+                            }
+                        });
+                        questions.forEach(q => existingQuestions.push(q));
+                        this.saveData();
+                        document.getElementById('editQuestionsInput').value = '';
+                        this.renderEditQuestions();
+                        this.showToast(`✅ ${questions.length} question(s) added (${duplicates.length} overwritten)!`, 'success');
+                    } else {
+                        // Add only new questions
+                        newQuestions.forEach(q => existingQuestions.push(q));
+                        this.saveData();
+                        document.getElementById('editQuestionsInput').value = '';
+                        this.renderEditQuestions();
+                        this.showToast(`✅ ${newQuestions.length} question(s) added (${duplicates.length} discarded)!`, 'info');
+                    }
+                } else {
+                    questions.forEach(q => existingQuestions.push(q));
+                    this.saveData();
+                    document.getElementById('editQuestionsInput').value = '';
+                    this.renderEditQuestions();
+                    this.hideLoading();
+                    this.showToast(`✅ ${questions.length} question(s) added!`, 'success');
+                }
             }, 100);
         }
 
@@ -2243,6 +2342,105 @@
         closeEditModal() {
             document.getElementById('editModal').classList.remove('active');
             this.currentEditingBank = null;
+        }
+
+        openRRTResults() {
+            // EDIT THIS URL TO YOUR DESIRED LINK
+            const rrtResultsURL = "https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExcTR3dG0wMzZldmxibDlqamp3a3h4cmxlcXJyc2c4ZDNyMGNjcHg5eiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/bAKICgYrXZqPlkuHDr/giphy.gif";
+            window.open(rrtResultsURL, '_blank');
+        }
+
+        showSurprise() {
+            // Check if surprise is enabled
+            if (!this.surpriseEnabled) {
+                this.showToast('This feature is currently disabled', 'info');
+                return;
+            }
+
+            // Create surprise overlay
+            const surpriseDiv = document.createElement('div');
+            surpriseDiv.id = 'surpriseOverlay';
+            surpriseDiv.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                animation: fadeIn 0.5s;
+            `;
+            
+            /*
+            surpriseDiv.innerHTML = `
+                <div style="text-align: center; color: white; padding: 40px; max-width: 800px; animation: slideUp 0.8s;">
+                    <div style="font-size: 6em; margin-bottom: 20px; animation: bounce 1s infinite;">🎉</div>
+                    <h1 style="font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">Congratulations!</h1>
+                    <h2 style="font-size: 2em; margin-bottom: 30px; font-weight: normal;">for passing the RTLE 2025!</h2>
+                    <h2 style="font-size: 2.5em; margin-bottom: 40px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">Eymhie Emerald T. Bayacal, RRT</h2>
+                    <button onclick="document.getElementById('surpriseOverlay').remove()" style="background: white; color: #667eea; border: none; padding: 15px 40px; border-radius: 30px; font-size: 1.2em; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: all 0.3s;">
+                        Close
+                    </button>
+                </div>
+            `;
+            */
+
+            surpriseDiv.innerHTML = `
+                <div style="text-align: center; color: white; padding: 40px; max-width: 800px; animation: slideUp 0.8s;">
+                    <div style="font-size: 6em; margin-bottom: 20px; animation: bounce 1s infinite;">⚠️</div>
+                    <h1 style="font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">WARNING</h1>
+                    <h2 style="font-size: 2em; margin-bottom: 30px; font-weight: normal;">Button is under Construction</h2>
+                    <h2 style="font-size: 2.5em; margin-bottom: 40px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">Open in December 2025</h2>
+                    <button onclick="app.stopConfetti(); document.getElementById('surpriseOverlay').remove()" style="background: white; color: #667eea; border: none; padding: 15px 40px; border-radius: 30px; font-size: 1.2em; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: all 0.3s;">
+                        Close
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(surpriseDiv);
+            
+            // Add confetti animation
+            this.createConfetti();
+        }
+
+        createConfetti() {
+            const colors = ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500'];
+            
+            // Create confetti continuously
+            this.confettiInterval = setInterval(() => {
+                const confetti = document.createElement('div');
+                confetti.style.cssText = `
+                    position: fixed;
+                    width: 10px;
+                    height: 10px;
+                    background: ${colors[Math.floor(Math.random() * colors.length)]};
+                    left: ${Math.random() * 100}%;
+                    top: -10px;
+                    opacity: 1;
+                    transform: rotate(${Math.random() * 360}deg);
+                    animation: confettiFall ${3 + Math.random() * 2}s linear forwards;
+                    z-index: 10001;
+                    border-radius: ${Math.random() > 0.5 ? '50%' : '0'};
+                `;
+                
+                const overlay = document.getElementById('surpriseOverlay');
+                if (overlay) {
+                    overlay.appendChild(confetti);
+                    setTimeout(() => confetti.remove(), 5000);
+                } else {
+                    // Stop confetti if overlay is removed
+                    clearInterval(this.confettiInterval);
+                }
+            }, 30);
+        }
+
+        stopConfetti() {
+            if (this.confettiInterval) {
+                clearInterval(this.confettiInterval);
+            }
         }
 
         // ============================================
@@ -3700,6 +3898,56 @@
             if (takeTab) {
                 takeTab.style.animation = '';
                 takeTab.style.boxShadow = '';
+            }
+        }
+        
+        updateClock() {
+            const now = new Date();
+            
+            // Current time
+            const timeStr = now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: true 
+            });
+            document.getElementById('currentTime').textContent = timeStr;
+            
+            // Current date
+            const dateStr = now.toLocaleDateString('en-US', { 
+                weekday: 'short',
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+            document.getElementById('currentDate').textContent = dateStr;
+            
+            // Countdown to December 11, 2025
+            const day1 = new Date('2025-12-11T00:00:00');
+            const diff1 = day1 - now;
+            
+            if (diff1 > 0) {
+                const days1 = Math.floor(diff1 / (1000 * 60 * 60 * 24));
+                const hours1 = Math.floor((diff1 % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const mins1 = Math.floor((diff1 % (1000 * 60 * 60)) / (1000 * 60));
+                const secs1 = Math.floor((diff1 % (1000 * 60)) / 1000);
+                document.getElementById('countdown1').textContent = `${days1}d ${hours1}h ${mins1}m ${secs1}s`;
+            } else {
+                document.getElementById('countdown1').textContent = '🎉 Today!';
+            }
+            
+            // Countdown to December 12, 2025
+            const day2 = new Date('2025-12-12T00:00:00');
+            const diff2 = day2 - now;
+            
+            if (diff2 > 0) {
+                const days2 = Math.floor(diff2 / (1000 * 60 * 60 * 24));
+                const hours2 = Math.floor((diff2 % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                const mins2 = Math.floor((diff2 % (1000 * 60 * 60)) / (1000 * 60));
+                const secs2 = Math.floor((diff2 % (1000 * 60)) / 1000);
+                document.getElementById('countdown2').textContent = `${days2}d ${hours2}h ${mins2}m ${secs2}s`;
+            } else {
+                document.getElementById('countdown2').textContent = '🎉 Today!';
             }
         }
     }
