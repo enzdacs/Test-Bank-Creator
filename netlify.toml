@@ -1,0 +1,9 @@
+[build]
+  # Tell Netlify to look for functions in a directory named 'netlify/functions'
+  functions = "netlify/functions"
+
+# Redirect traffic from the frontend to your secure function
+[[redirects]]
+  from = "/api/generate-questions"
+  to = "/.netlify/functions/generate-questions"
+  status = 200
