@@ -1,13 +1,8 @@
-// This file runs on Netlify's secure server (Node.js environment)
-
-// 1. Get the Gemini API Key from the environment variables (SECURE!)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Base URL for the Gemini API call
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 
 exports.handler = async (event) => {
-    // Check for POST request and API key existence
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };
     }
@@ -16,10 +11,8 @@ exports.handler = async (event) => {
     }
 
     try {
-        // Parse the data sent from your frontend script.js
         const { topic, count, difficulty } = JSON.parse(event.body);
 
-        // Construct the detailed prompt exactly as required by your app
         const prompt = `Generate ${count} multiple choice questions about "${topic}" at ${difficulty} difficulty level. 
         
 Format each question EXACTLY like this:
@@ -42,7 +35,6 @@ IMPORTANT RULES:
 - Make questions clear and educational
 - Ensure correct answers are accurate`;
 
-        // 3. Make the secure call to the actual Gemini API
         const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
             method: 'POST',
             headers: {
@@ -57,7 +49,6 @@ IMPORTANT RULES:
 
         const data = await response.json();
         
-        // Return the raw response from the Gemini API back to the client
         return {
             statusCode: 200,
             headers: { "Content-Type": "application/json" },
