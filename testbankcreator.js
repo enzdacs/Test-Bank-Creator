@@ -2356,7 +2356,7 @@ class QuizMasterApp {
     closeGeminiModal() {
         document.getElementById('geminiModal').classList.remove('active');
     }
-
+    
     async generateWithGemini() {
         const topic = document.getElementById('geminiTopic').value.trim();
         const count = document.getElementById('geminiCount').value;
@@ -2367,49 +2367,30 @@ class QuizMasterApp {
             return;
         }
         
-        // **CRITICAL: The API Key is hardcoded here and exposed. For a production app,
-        // you MUST use a server-side proxy to keep your key secret.**
-        const apiKey = 'AIzaSyAh6_A9UztWFt6qA_m_zUxkmJRlZ-LAnbw'; 
+        const proxyUrl = '/api/generate-questions';
         
         this.showLoading('AI is generating questions...');
         
         try {
-            const prompt = `Generate ${count} multiple choice questions about "${topic}" at ${difficulty} difficulty level. 
-            
-Format each question EXACTLY like this:
-Q1: [Question text here]
-A. [Option 1]
-B. [Option 2]
-C. [Option 3]
-*D. [Correct answer - mark with asterisk]
-
-Q2: [Next question]
-A. [Option 1]
-*B. [Correct answer]
-C. [Option 3]
-D. [Option 4]
-
-IMPORTANT RULES:
-- Mark the correct answer with * before the letter
-- Each question must have exactly 4 options (A, B, C, D)
-- Separate questions with a blank line
-- Make questions clear and educational
-- Ensure correct answers are accurate`;
-
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+            // --- The corrected fetch call starts here ---
+            // We send the parameters (NOT the API key) to the proxy.
+            const response = await fetch(proxyUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: prompt
-                        }]
-                    }]
+                    topic: topic,
+                    count: count,
+                    difficulty: difficulty
                 })
             });
             
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.details || `Server/Proxy Error: ${response.status} ${response.statusText}`);
+            }
+
             const data = await response.json();
             
             this.hideLoading();
@@ -2420,15 +2401,14 @@ IMPORTANT RULES:
                 document.getElementById('geminiResult').style.display = 'block';
                 this.showToast('✨ Questions generated successfully!', 'success');
             } else if (data.error) {
-                 // Handle specific API errors
-                throw new Error(`API Error: ${data.error.message}`);
+                throw new Error(data.error.message);
             } else {
-                throw new Error('Failed to generate questions. Unknown error.');
+                throw new Error('Failed to generate questions. Unknown API response.');
             }
         } catch (error) {
             this.hideLoading();
-            console.error('Gemini API error:', error);
-            this.showToast(`Failed to generate questions: ${error.message || 'Check your API Key and network connection.'}`, 'error');
+            console.error('AI Generation error:', error);
+            this.showToast(`Failed to generate questions: ${error.message || 'Check your Netlify function setup.'}`, 'error');
         }
     }
 
