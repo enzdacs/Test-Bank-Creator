@@ -1105,6 +1105,11 @@ body.dark-mode .flashcard-face {
     }
 }
 
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+}
+
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
     body {
