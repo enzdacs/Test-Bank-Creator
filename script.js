@@ -787,10 +787,10 @@ class QuizMasterApp {
         
         surpriseDiv.innerHTML = `
             <div style="text-align: center; color: white; padding: 40px; max-width: 800px; animation: slideUp 0.8s;">
-                <div style="font-size: 6em; margin-bottom: 20px; animation: bounce 1s infinite;">⚠️</div>
-                <h1 style="font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">WARNING</h1>
-                <h2 style="font-size: 2em; margin-bottom: 30px; font-weight: normal;">Button is under Construction</h2>
-                <h2 style="font-size: 2.5em; margin-bottom: 40px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">Open in December 2025</h2>
+                <div style="font-size: 6em; margin-bottom: 20px; animation: bounce 1s infinite;">🎉</div>
+                <h1 style="font-size: 3em; margin-bottom: 20px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">CONGRATULATIONS!</h1>
+                <h2 style="font-size: 2em; margin-bottom: 30px; font-weight: normal;">FOR PASSING THE RTLE 2025!</h2>
+                <h2 style="font-size: 2.5em; margin-bottom: 40px; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);">EYMHIE EMERALD T. BAYACAL, RRT</h2>
                 <button onclick="app.stopConfetti(); document.getElementById('surpriseOverlay').remove()" style="background: white; color: #667eea; border: none; padding: 15px 40px; border-radius: 30px; font-size: 1.2em; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.3); transition: all 0.3s;">
                     Close
                 </button>
