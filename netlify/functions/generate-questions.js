@@ -1,34 +1,35 @@
 // netlify/functions/generate-questions.js
+const fetch = require('node-fetch'); // Kailangan ito para gumana ang fetch sa Node.js
 
 exports.handler = async (event, context) => {
-  // Only allow POST requests
+  // 1. Only allow POST requests
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Method Not Allowed' })
     };
   }
 
   try {
-    // Parse request body
+    // 2. Parse request body
     const { topic, count, difficulty, length, fileData, prompt } = JSON.parse(event.body);
 
-    // Get API key from environment variable
+    // 3. Get API key from environment variable
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.error('GEMINI_API_KEY not found in environment variables');
+      console.error('GEMINI_API_KEY not found');
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'API key not configured' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'API key not configured sa Netlify' })
       };
     }
 
-    // Build request for Gemini API
+    // 4. Build request for Gemini API
     let parts = [];
-
     if (fileData) {
-      // File-based generation
       parts = [
         {
           inline_data: {
@@ -39,27 +40,22 @@ exports.handler = async (event, context) => {
         { text: prompt }
       ];
     } else {
-      // Text-based generation
       parts = [{ text: prompt }];
     }
 
-    // Call Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // 5. Call Gemini API (Inayos ang URL sa gemini-1.5-flash)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
     const response = await fetch(geminiUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: parts
-        }],
+        contents: [{ parts: parts }],
         generationConfig: {
           temperature: 0.8,
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 8192,
-          candidateCount: 1,
         },
         safetySettings: [
           { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
@@ -70,11 +66,13 @@ exports.handler = async (event, context) => {
       })
     });
 
+    // 6. Handle HTTP errors mula sa Google
     if (!response.ok) {
       const errorData = await response.json();
       console.error('Gemini API Error:', errorData);
       return {
         statusCode: response.status,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           error: errorData.error?.message || 'Failed to generate questions' 
         })
@@ -83,7 +81,7 @@ exports.handler = async (event, context) => {
 
     const data = await response.json();
 
-    // Extract generated text
+    // 7. Extract generated text and return JSON
     if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
       const generatedText = data.candidates[0].content.parts[0].text;
 
@@ -91,7 +89,7 @@ exports.handler = async (event, context) => {
         statusCode: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*' // Para iwas CORS issue
         },
         body: JSON.stringify({ 
           questions: generatedText,
@@ -104,10 +102,11 @@ exports.handler = async (event, context) => {
         })
       };
     } else {
-      console.error('Unexpected API response structure:', data);
+      console.error('Unexpected API response structure:', JSON.stringify(data));
       return {
         statusCode: 500,
-        body: JSON.stringify({ error: 'No content in API response' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: 'No content in API response. Baka na-block ng Safety Filters.' })
       };
     }
 
@@ -115,8 +114,9 @@ exports.handler = async (event, context) => {
     console.error('Function error:', error);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        error: error.message || 'Internal server error' 
+        error: 'Server Error: ' + (error.message || 'Internal server error') 
       })
     };
   }
