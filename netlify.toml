@@ -2,6 +2,7 @@
   publish = "."
   functions = "netlify/functions"
 
+# Ito ang redirect para sa clean API calls
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
