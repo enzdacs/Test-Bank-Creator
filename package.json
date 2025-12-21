@@ -1,0 +1,9 @@
+{
+  "name": "quizmaster-ai",
+  "version": "1.0.0",
+  "description": "QuizMaster with Gemini AI Integration",
+  "main": "index.html",
+  "dependencies": {
+    "node-fetch": "^2.6.7"
+  }
+}
