@@ -4,6 +4,9 @@ class QuizMasterApp {
         this.currentBank = null;
         this.currentQuestions = [];
         this.currentEditingBank = null;
+        this.notes = {};
+        this.currentEditingNote = null;
+        this.isFullscreen = false;
         this.quizState = {
             currentIndex: 0,
             answers: [],
@@ -19,11 +22,589 @@ class QuizMasterApp {
 
     init() {
         this.loadData();
+        this.loadNotes();
         this.loadDarkMode();
         this.setupEventListeners();
         this.updateTestBankList();
         this.updateSelectOptions();
         this.updateAnalytics();
+    }
+
+    // ============================================
+    // NOTES MODE FUNCTIONS
+    // ============================================
+
+    loadNotes() {
+        const saved = localStorage.getItem('quizMasterNotes');
+        if (saved) {
+            try {
+                this.notes = JSON.parse(saved);
+            } catch (error) {
+                console.error('Failed to load notes:', error);
+            }
+        }
+        this.updateNotesList();
+    }
+
+    saveNotes() {
+        try {
+            localStorage.setItem('quizMasterNotes', JSON.stringify(this.notes));
+            return true;
+        } catch (error) {
+            this.showToast('Failed to save notes', 'error');
+            return false;
+        }
+    }
+
+    updateNotesList() {
+        const list = document.getElementById('notesList');
+        if (!list) return;
+
+        list.innerHTML = '';
+
+        Object.keys(this.notes).forEach(key => {
+            const note = this.notes[key];
+            const card = document.createElement('div');
+            card.className = 'test-bank-card note-card';
+            
+            const preview = note.content.replace(/<[^>]*>/g, '').substring(0, 100);
+            const wordCount = note.content.split(/\s+/).filter(w => w.length > 0).length;
+            
+            const isPDF = note.isPDF === true;
+            const icon = isPDF ? '📄' : '📝';
+
+            card.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+                    <div style="flex: 1;">
+                        <h3 style="margin-bottom: 8px;">${icon} ${this.escapeHtml(note.title)}</h3>
+                        ${!isPDF ? `
+                            <p style="margin: 5px 0; font-size: 0.9em; color: #6c757d; font-style: italic;">
+                                ${preview}${preview.length >= 100 ? '...' : ''}
+                            </p>
+                            <p style="margin: 8px 0 3px 0; font-size: 0.85em;">📊 ${wordCount} words</p>
+                        ` : '<p style="margin: 5px 0; font-size: 0.9em; color: #6c757d;">PDF Document</p>'}
+                        <p style="margin: 3px 0; font-size: 0.85em;">🕐 ${new Date(note.lastModified).toLocaleDateString()}</p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
+                        ${isPDF ? `
+                            <button onclick="app.viewPDFNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                title="View PDF" 
+                                style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                                👁️
+                            </button>
+                        ` : `
+                            <button onclick="app.editNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                title="Edit" 
+                                style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                                ✏️
+                            </button>
+                        `}
+                        <button onclick="app.deleteNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                            title="Delete" 
+                            style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Modify click behavior
+            card.onclick = (e) => {
+                if (e.target.tagName !== 'BUTTON') {
+                    if (isPDF) {
+                        this.viewPDFNote(key);
+                    } else {
+                        this.editNote(key);
+                    }
+                }
+            };
+
+            list.appendChild(card);
+        });
+
+        if (Object.keys(this.notes).length === 0) {
+            list.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">No notes yet. Create your first note above! 📓</p>';
+        }
+    }
+
+    createNewNote() {
+        // Check if "Untitled Note" already exists
+        const untitledExists = Object.values(this.notes).some(note => 
+            note.title === 'Untitled Note' && note.content === ''
+        );
+        
+        if (untitledExists) {
+            this.showToast('⚠️ An empty "Untitled Note" already exists. Please edit or delete it first.', 'warning');
+            return;
+        }
+        
+        const noteId = `note_${Date.now()}`;
+        this.currentEditingNote = noteId;
+        
+        // Don't save to this.notes yet, just store temporarily
+        this.tempNote = {
+            id: noteId,
+            title: 'Untitled Note',
+            content: '',
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString()
+        };
+        this.noteHasChanges = false; // Track if user made changes
+
+        document.getElementById('noteTitle').value = 'Untitled Note';
+        document.getElementById('noteContent').innerHTML = '';
+        document.getElementById('noteEditor').style.display = 'block';
+        document.getElementById('notesList').style.display = 'none';
+
+        document.getElementById('noteEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        setTimeout(() => {
+            document.getElementById('noteTitle').focus();
+            document.getElementById('noteTitle').select();
+        }, 300);
+    }
+
+    editNote(noteId) {
+        this.currentEditingNote = noteId;
+        this.noteHasChanges = false; // Reset change tracking
+        this.tempNote = null; // Clear temp note
+        const note = this.notes[noteId];
+
+        document.getElementById('noteTitle').value = note.title;
+        document.getElementById('noteContent').innerHTML = note.content;
+        document.getElementById('noteEditor').style.display = 'block';
+        document.getElementById('notesList').style.display = 'none';
+
+        document.getElementById('noteEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    saveNote() {
+        const title = document.getElementById('noteTitle').value.trim() || 'Untitled Note';
+        const content = document.getElementById('noteContent').innerHTML.trim();
+
+        // For new notes
+        if (this.tempNote) {
+            this.notes[this.tempNote.id] = {
+                title: title,
+                content: content,
+                createdAt: this.tempNote.createdAt,
+                lastModified: new Date().toISOString()
+            };
+            this.currentEditingNote = this.tempNote.id;
+            this.tempNote = null;
+        } 
+        // For existing notes
+        else if (this.currentEditingNote) {
+            this.notes[this.currentEditingNote].title = title;
+            this.notes[this.currentEditingNote].content = content;
+            this.notes[this.currentEditingNote].lastModified = new Date().toISOString();
+        }
+
+        this.saveNotes();
+        this.noteHasChanges = false;
+        this.showToast('✅ Note saved successfully!', 'success');
+    }
+
+    closeNoteEditor() {
+        // Check if there are unsaved changes
+        const title = document.getElementById('noteTitle').value.trim();
+        const content = document.getElementById('noteContent').innerHTML.trim();
+        
+        if (this.noteHasChanges || this.tempNote) {
+            if (!confirm('Close without saving? Your work will be lost.')) {
+                return; // Don't close
+            }
+            // User confirmed, discard changes
+            this.tempNote = null;
+        }
+
+        document.getElementById('noteEditor').style.display = 'none';
+        document.getElementById('notesList').style.display = 'grid';
+        this.currentEditingNote = null;
+        this.tempNote = null;
+        this.noteHasChanges = false;
+        this.updateNotesList();
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    async deleteNote(noteId) {
+        if (confirm('Are you sure you want to delete this note?')) {
+            delete this.notes[noteId];
+            this.saveNotes();
+            this.updateNotesList();
+            this.showToast('Note deleted', 'info');
+        }
+    }
+
+    // Text Formatting Functions
+    formatText(command) {
+        document.execCommand(command, false, null);
+        document.getElementById('noteContent').focus();
+    }
+
+    changeFontSize(size) {
+        document.execCommand('fontSize', false, size);
+        document.getElementById('noteContent').focus();
+    }
+
+    changeFontFamily(font) {
+        if (font) {
+            document.execCommand('fontName', false, font);
+            document.getElementById('noteContent').focus();
+        }
+    }
+
+    changeFontSizeExact(size) {
+        if (size) {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                // There is selected text
+                const range = selection.getRangeAt(0);
+                const span = document.createElement('span');
+                span.style.fontSize = size;
+                try {
+                    range.surroundContents(span);
+                } catch (e) {
+                    // If surroundContents fails, use alternative method
+                    const fragment = range.extractContents();
+                    span.appendChild(fragment);
+                    range.insertNode(span);
+                }
+            } else {
+                // No selection - apply to future text
+                document.execCommand('fontSize', false, '7');
+                const fontElements = document.querySelectorAll('#noteContent font[size="7"]');
+                fontElements.forEach(el => {
+                    el.removeAttribute('size');
+                    el.style.fontSize = size;
+                });
+            }
+            document.getElementById('noteContent').focus();
+            this.noteHasChanges = true;
+        }
+    }
+
+    changeTextColor(color) {
+        document.execCommand('foreColor', false, color);
+        document.getElementById('noteContent').focus();
+    }
+
+    clearFormatting() {
+        document.execCommand('removeFormat', false, null);
+        document.getElementById('noteContent').focus();
+    }
+
+    insertImage() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = document.createElement('img');
+                img.src = event.target.result;
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.borderRadius = '8px';
+                img.style.margin = '10px 0';
+                
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    range.insertNode(img);
+                } else {
+                    document.getElementById('noteContent').appendChild(img);
+                }
+            };
+            reader.readAsDataURL(file);
+        };
+        
+        input.click();
+    }
+
+    indent() {
+    document.execCommand('indent', false, null);
+    document.getElementById('noteContent').focus();
+    }
+
+    outdent() {
+        document.execCommand('outdent', false, null);
+        document.getElementById('noteContent').focus();
+    }
+
+    handleNoteKeydown(event) {
+        // Tab key for indent
+        if (event.key === 'Tab' && !event.shiftKey) {
+            event.preventDefault();
+            document.execCommand('indent', false, null);
+            this.noteHasChanges = true;
+        }
+        // Shift+Tab for outdent
+        else if (event.key === 'Tab' && event.shiftKey) {
+            event.preventDefault();
+            document.execCommand('outdent', false, null);
+            this.noteHasChanges = true;
+        }
+        // Backspace for outdent when at the start of an indented line
+        else if (event.key === 'Backspace') {
+            const selection = window.getSelection();
+            if (selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                // Check if cursor is at the start of the line
+                if (range.collapsed && range.startOffset === 0) {
+                    const parent = range.startContainer.parentElement;
+                    // Check if parent is indented (blockquote or has margin/padding)
+                    if (parent && (parent.tagName === 'BLOCKQUOTE' || 
+                        parent.style.marginLeft || parent.style.paddingLeft)) {
+                        event.preventDefault();
+                        document.execCommand('outdent', false, null);
+                        this.noteHasChanges = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Export Note Function
+    async exportNote() {
+        if (!this.currentEditingNote) return;
+
+        const note = this.notes[this.currentEditingNote];
+        const exportFormat = prompt('Export as:\n1. PDF\n2. DOCX\n3. TXT\n4. HTML\n\nEnter number (1-4):', '1');
+
+        this.showLoading('Exporting note...');
+
+        try {
+            if (exportFormat === '1') {
+                // Export as PDF using jsPDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                // Title
+                doc.setFontSize(18);
+                doc.setTextColor(102, 126, 234);
+                doc.text(note.title, 20, 20);
+                
+                // Content (strip HTML for basic export)
+                doc.setFontSize(11);
+                doc.setTextColor(0, 0, 0);
+                const content = note.content.replace(/<[^>]*>/g, '\n');
+                const lines = doc.splitTextToSize(content, 170);
+                doc.text(lines, 20, 35);
+                
+                doc.save(`${note.title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+            } else if (exportFormat === '2') {
+                // Export as DOCX (HTML-based method)
+                const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' 
+                                xmlns:w='urn:schemas-microsoft-com:office:word' 
+                                xmlns='http://www.w3.org/TR/REC-html40'>
+                                <head><meta charset='utf-8'><title>${note.title}</title></head><body>`;
+                const footer = "</body></html>";
+                const sourceHTML = header + `<h1>${note.title}</h1>` + note.content + footer;
+                
+                const blob = new Blob(['\ufeff', sourceHTML], {
+                    type: 'application/msword'
+                });
+                
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.doc`;
+                link.click();
+                URL.revokeObjectURL(url);
+            } else if (exportFormat === '3') {
+                // Export as TXT
+                const txtContent = note.content.replace(/<[^>]*>/g, '\n');
+                const blob = new Blob([txtContent], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+                link.click();
+                URL.revokeObjectURL(url);
+            } else if (exportFormat === '4') {
+                // Export as HTML
+                const htmlContent = `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>${note.title}</title>
+        <style>
+            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+            h1 { color: #667eea; }
+        </style>
+    </head>
+    <body>
+        <h1>${note.title}</h1>
+        ${note.content}
+    </body>
+    </html>`;
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.html`;
+                link.click();
+                URL.revokeObjectURL(url);
+            } else {
+                this.showToast('Invalid export format', 'warning');
+            }
+
+            this.hideLoading();
+            this.showToast('✅ Note exported successfully!', 'success');
+        } catch (error) {
+            this.hideLoading();
+            console.error('Export error:', error);
+            this.showToast('❌ Failed to export note', 'error');
+        }
+    }
+
+    // Import Note File
+    async handleNoteFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        this.showLoading('Importing file...');
+
+        try {
+            const fileType = file.type;
+            const fileName = file.name;
+
+            if (fileType === 'text/plain') {
+                // Handle TXT files
+                const text = await file.text();
+                document.getElementById('noteContent').innerHTML = text.replace(/\n/g, '<br>');
+                this.showToast('✅ Text file imported!', 'success');
+            } else if (fileType.includes('image')) {
+                // Handle images
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = `<img src="${e.target.result}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0;">`;
+                    document.getElementById('noteContent').innerHTML += img;
+                    this.showToast('✅ Image imported!', 'success');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                this.showToast('⚠️ This file type requires manual copy-paste for now', 'warning');
+            }
+
+            this.hideLoading();
+        } catch (error) {
+            this.hideLoading();
+            console.error('Import error:', error);
+            this.showToast('❌ Failed to import file', 'error');
+        }
+
+        event.target.value = '';
+    }
+
+    importPDFNote() {
+        document.getElementById('pdfNoteInput').click();
+    }
+
+    async handlePDFImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf') {
+            this.showToast('⚠️ Please select a PDF file only', 'warning');
+            event.target.value = '';
+            return;
+        }
+
+        this.showLoading('Importing PDF...');
+
+        try {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const pdfData = e.target.result;
+                const fileName = file.name.replace('.pdf', '');
+                
+                // Auto-save to notes immediately
+                const noteId = `pdf_${Date.now()}`;
+                this.notes[noteId] = {
+                    title: fileName,
+                    content: '',
+                    pdfData: pdfData,
+                    isPDF: true,
+                    createdAt: new Date().toISOString(),
+                    lastModified: new Date().toISOString()
+                };
+                
+                this.saveNotes();
+                this.updateNotesList();
+                
+                // Show PDF viewer
+                this.currentPDFData = {
+                    name: file.name,
+                    data: pdfData
+                };
+                
+                document.getElementById('pdfFrame').src = pdfData;
+                document.getElementById('pdfViewerModal').classList.add('active');
+                
+                this.hideLoading();
+                this.showToast('✅ PDF saved to notes!', 'success');
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            this.hideLoading();
+            console.error('PDF load error:', error);
+            this.showToast('❌ Failed to load PDF', 'error');
+        }
+
+        event.target.value = '';
+    }
+    
+    viewPDFNote(noteId) {
+        const note = this.notes[noteId];
+        if (!note.isPDF) return;
+        
+        this.currentPDFData = {
+            name: note.title + '.pdf',
+            data: note.pdfData
+        };
+        
+        document.getElementById('pdfFrame').src = note.pdfData;
+        document.getElementById('pdfViewerModal').classList.add('active');
+    }
+
+    closePDFViewer() {
+        document.getElementById('pdfViewerModal').classList.remove('active');
+        document.getElementById('pdfFrame').src = '';
+        
+        // Exit fullscreen if active
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        }
+    }
+
+    togglePDFFullscreen() {
+        const modal = document.getElementById('pdfViewerModal').querySelector('.modal-content');
+        const icon = document.getElementById('fullscreenIcon');
+        
+        if (!document.fullscreenElement) {
+            modal.requestFullscreen().catch(err => {
+                console.error('Fullscreen error:', err);
+                this.showToast('Fullscreen not supported', 'warning');
+            });
+            icon.textContent = '⛶';
+        } else {
+            document.exitFullscreen();
+            icon.textContent = '⛶';
+        }
+    }
+
+    // Helper function for HTML escaping (add this if it doesn't exist)
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     setupEventListeners() {
@@ -365,22 +946,87 @@ class QuizMasterApp {
                 avgScore = avg.toFixed(1) + '%';
             }
             
+            // Get last 4 attempts
+            const last4Attempts = bank.attempts.slice(-3).reverse();
+            let attemptsHTML = '';
+            if (last4Attempts.length > 0) {
+                attemptsHTML = last4Attempts.map((attempt, index) => {
+                    const attemptNumber = bank.attempts.length - index;
+                    const date = new Date(attempt.date).toLocaleDateString();
+                    const percentage = parseFloat(attempt.percentage);
+                    
+                    // Determine color based on percentage
+                    const color = percentage >= 80 ? '#28a745' : percentage >= 60 ? '#ffc107' : '#dc3545';
+                    
+                    // Determine icon based on percentage
+                    let icon;
+                    if (percentage <= 40) {
+                        icon = '📚';
+                    } else if (percentage <= 70) {
+                        icon = '💪';
+                    } else if (percentage <= 85) {
+                        icon = '🎯';
+                    } else {
+                        icon = '🎉';
+                    }
+                    
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-size: 0.95em;">
+                            <span>${icon} Attempt ${attemptNumber} (${date}):</span>
+                            <span style="font-weight: bold; color: ${color};">${attempt.score}/${bank.questions.length} (${percentage}%)</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                attemptsHTML = '<p style="margin: 8px 0; font-size: 0.95em; color: #6c757d; font-style: italic;">No attempts yet</p>';
+            }
+
             card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
-                    <div style="flex: 1;">
-                        <h3 style="margin-bottom: 8px;">${bank.title}</h3>
-                        <p style="margin: 3px 0;">📝 ${bank.questions.length} questions</p>
-                        <p style="margin: 3px 0;">📊 ${bank.attempts.length} attempts</p>
-                        <p style="margin: 3px 0;">⭐ Avg: ${avgScore}</p>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
-                        <button onclick="app.viewBank('${key.replace(/'/g, "\\'")}');" title="View" style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">👁️</button>
-                        <button onclick="app.editBank('${key.replace(/'/g, "\\'")}');" title="Edit" style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">✏️</button>
-                        <button onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}');" title="Share" style="background: #667eea; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🔗</button>
-                        <button onclick="app.deleteBank('${key.replace(/'/g, "\\'")}');" title="Delete" style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🗑️</button>
+                <h3 style="margin-bottom: 15px;">${bank.title}</h3>
+                
+                <!-- Default Content (shown initially) -->
+                <div class="bank-default-content">
+                    <div style="display: flex; justify-content: space-between; align-items: start; gap: 15px;">
+                        <div style="flex: 1;">
+                            <p style="margin: 3px 0;">📝 ${bank.questions.length} questions</p>
+                            <p style="margin: 3px 0;">📊 ${bank.attempts.length} attempts</p>
+                            <p style="margin: 3px 0;">⭐ Avg: ${avgScore}</p>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
+                            <button onclick="app.viewBank('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" title="View" style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">👁️</button>
+                            <button onclick="app.editBank('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" title="Edit" style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">✏️</button>
+                            <button onclick="app.shareSingleBank('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" title="Share" style="background: #667eea; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🔗</button>
+                            <button onclick="app.deleteBank('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" title="Delete" style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">🗑️</button>
+                        </div>
                     </div>
                 </div>
+                
+                <!-- Recent Attempts (hidden initially) -->
+                <div class="recent-attempts-toggle" style="display: none;">
+                    ${attemptsHTML}
+                </div>
             `;
+
+            // Toggle on click (works on both desktop and mobile)
+            card.addEventListener('click', (e) => {
+                // Don't toggle if clicking a button
+                if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                    return;
+                }
+                
+                const defaultContent = card.querySelector('.bank-default-content');
+                const recentAttempts = card.querySelector('.recent-attempts-toggle');
+                
+                if (defaultContent.style.display === 'none') {
+                    // Show default, hide attempts
+                    defaultContent.style.display = 'block';
+                    recentAttempts.style.display = 'none';
+                } else {
+                    // Hide default, show attempts
+                    defaultContent.style.display = 'none';
+                    recentAttempts.style.display = 'block';
+                }
+            });
 
             list.appendChild(card);
         });
@@ -832,34 +1478,93 @@ class QuizMasterApp {
         
         const oldName = this.currentEditingBank;
         const bank = this.testBanks[oldName];
+        
+        // FIRST: Save all currently visible questions' data
         bank.questions.forEach((q, index) => {
-            const questionText = document.getElementById(`q-text-${index}`);
-            if (questionText) {
-                q.question = questionText.value;
-            }
+            const questionElement = document.getElementById(`question-${index}`);
             
-            const options = [];
-            for (let i = 0; i < 4; i++) {
-                const optInput = document.getElementById(`q-opt-${index}-${i}`);
-                if (optInput) {
-                    options.push(optInput.value);
+            // Only update if the question element exists in DOM
+            if (questionElement) {
+                const questionText = document.getElementById(`q-text-${index}`);
+                if (questionText) {
+                    q.question = questionText.value;
                 }
-            }
-            q.options = options;
-            
-            if (q.isMultipleChoice) {
-                // Get all checked checkboxes
-                const checkedBoxes = document.querySelectorAll(`input[name^="correct-check-${index}-"]:checked`);
-                q.correct = Array.from(checkedBoxes).map(cb => cb.value);
-                q.isMultipleChoice = q.correct.length > 1;
-            } else {
-                const correctRadio = document.querySelector(`input[name="correct-${index}"]:checked`);
-                if (correctRadio) {
-                    q.correct = correctRadio.value;
-                    q.isMultipleChoice = false;
+                
+                const options = [];
+                for (let i = 0; i < 4; i++) {
+                    const optInput = document.getElementById(`q-opt-${index}-${i}`);
+                    if (optInput) {
+                        options.push(optInput.value);
+                    }
+                }
+                
+                if (options.length > 0) {
+                    q.options = options;
+                }
+                
+                if (q.isMultipleChoice) {
+                    const checkedBoxes = document.querySelectorAll(`input[name^="correct-check-${index}-"]:checked`);
+                    if (checkedBoxes.length > 0) {
+                        q.correct = Array.from(checkedBoxes).map(cb => cb.value);
+                        q.isMultipleChoice = q.correct.length > 1;
+                    }
+                } else {
+                    const correctRadio = document.querySelector(`input[name="correct-${index}"]:checked`);
+                    if (correctRadio) {
+                        q.correct = correctRadio.value;
+                        q.isMultipleChoice = false;
+                    }
                 }
             }
         });
+        
+        // THEN: Check if filter is active and needs clearing
+        const searchInput = document.getElementById('editSearchInput');
+        const hasFilter = searchInput && searchInput.value.trim() !== '';
+        
+        if (hasFilter) {
+            // Clear filter and re-render to show all questions
+            searchInput.value = '';
+            this.renderEditQuestions();
+            
+            // Now save any remaining questions that weren't visible before
+            bank.questions.forEach((q, index) => {
+                const questionElement = document.getElementById(`question-${index}`);
+                
+                if (questionElement) {
+                    const questionText = document.getElementById(`q-text-${index}`);
+                    if (questionText) {
+                        q.question = questionText.value;
+                    }
+                    
+                    const options = [];
+                    for (let i = 0; i < 4; i++) {
+                        const optInput = document.getElementById(`q-opt-${index}-${i}`);
+                        if (optInput) {
+                            options.push(optInput.value);
+                        }
+                    }
+                    
+                    if (options.length > 0) {
+                        q.options = options;
+                    }
+                    
+                    if (q.isMultipleChoice) {
+                        const checkedBoxes = document.querySelectorAll(`input[name^="correct-check-${index}-"]:checked`);
+                        if (checkedBoxes.length > 0) {
+                            q.correct = Array.from(checkedBoxes).map(cb => cb.value);
+                            q.isMultipleChoice = q.correct.length > 1;
+                        }
+                    } else {
+                        const correctRadio = document.querySelector(`input[name="correct-${index}"]:checked`);
+                        if (correctRadio) {
+                            q.correct = correctRadio.value;
+                            q.isMultipleChoice = false;
+                        }
+                    }
+                }
+            });
+        }
         
         if (newName !== oldName) {
             bank.title = newName;
@@ -1685,39 +2390,46 @@ class QuizMasterApp {
 
         const container = document.getElementById('quizContainer');
         container.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
+            <div style="text-align: center; padding: 40px 20px;">
                 <div class="feedback-icon">${icon}</div>
                 <h2>${message}</h2>
                 <h3 style="margin: 20px 0;">Score: ${score}/${total} (${percentage}%)</h3>
                 <p style="color: #6c757d;">Time: ${Math.floor(duration / 60000)} minutes ${Math.floor((duration % 60000) / 1000)} seconds</p>
                 
+                <!-- Results Display Area -->
                 <div style="margin: 30px 0; text-align: left;" id="resultsContainer">
                     <!-- Results will be rendered here -->
                 </div>
                 
-                <div style="display: flex; justify-content: center; align-items: center; gap: 15px; margin: 30px 0; flex-wrap: wrap;">
-                    <button class="btn btn-secondary" onclick="app.navigateResults('prev')" id="prevResultBtn" style="min-width: 120px;">
-                        ⬅️ Previous
-                    </button>
-                    
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-weight: bold; color: #667eea;">Question:</span>
-                        <div id="resultPageNumbers" style="display: flex; gap: 5px; flex-wrap: wrap; max-width: 600px; justify-content: center;"></div>
+                <!-- MOBILE-OPTIMIZED NAVIGATION -->
+                <div class="results-navigation-wrapper">
+                    <!-- Previous/Next Buttons Row -->
+                    <div class="results-nav-buttons">
+                        <button class="btn btn-secondary" onclick="app.navigateResults('prev')" id="prevResultBtn">
+                            ⬅️ Previous
+                        </button>
+                        <button class="btn btn-secondary" onclick="app.navigateResults('next')" id="nextResultBtn">
+                            Next ➡️
+                        </button>
                     </div>
                     
-                    <button class="btn btn-secondary" onclick="app.navigateResults('next')" id="nextResultBtn" style="min-width: 120px;">
-                        Next ➡️
-                    </button>
+                    <!-- Question Label and Page Numbers -->
+                    <div class="results-question-label">
+                        <span>Question:</span>
+                        <div id="resultPageNumbers"></div>
+                    </div>
                 </div>
                 
-                <div style="text-align: center; margin: 15px 0;">
-                    <span style="color: #6c757d; font-size: 0.95em;">
-                        Showing question <strong id="currentQuestionNum">1</strong> of <strong>${total}</strong>
-                    </span>
+                <!-- Current Question Indicator -->
+                <div class="results-current-indicator">
+                    Showing question <strong id="currentQuestionNum">1</strong> of <strong>${total}</strong>
                 </div>
                 
-                <button class="btn btn-primary" onclick="app.retakeQuiz()">🔄 Retake Test</button>
-                <button class="btn btn-secondary" onclick="location.reload()">🏠 Back to Home</button>
+                <!-- Action Buttons -->
+                <div class="results-action-buttons">
+                    <button class="btn btn-primary" onclick="app.retakeQuiz()">🔄 Retake Test</button>
+                    <button class="btn btn-secondary" onclick="location.reload()">🏠 Back to Home</button>
+                </div>
             </div>
         `;
 
@@ -1777,13 +2489,28 @@ class QuizMasterApp {
         const current = this.quizResults.currentPage;
         
         // Update prev/next buttons
-        document.getElementById('prevResultBtn').disabled = current === 0;
-        document.getElementById('nextResultBtn').disabled = current === total - 1;
-        document.getElementById('prevResultBtn').style.opacity = current === 0 ? '0.5' : '1';
-        document.getElementById('nextResultBtn').style.opacity = current === total - 1 ? '0.5' : '1';
+        const prevBtn = document.getElementById('prevResultBtn');
+        const nextBtn = document.getElementById('nextResultBtn');
+        
+        if (prevBtn && nextBtn) {
+            prevBtn.disabled = current === 0;
+            nextBtn.disabled = current === total - 1;
+            prevBtn.style.opacity = current === 0 ? '0.5' : '1';
+            nextBtn.style.opacity = current === total - 1 ? '0.5' : '1';
+            prevBtn.style.cursor = current === 0 ? 'not-allowed' : 'pointer';
+            nextBtn.style.cursor = current === total - 1 ? 'not-allowed' : 'pointer';
+        }
+        
+        // Update current question number
+        const currentNumSpan = document.getElementById('currentQuestionNum');
+        if (currentNumSpan) {
+            currentNumSpan.textContent = current + 1;
+        }
         
         // Generate page numbers
         const pageNumbersDiv = document.getElementById('resultPageNumbers');
+        if (!pageNumbersDiv) return;
+        
         pageNumbersDiv.innerHTML = '';
         
         for (let i = 0; i < total; i++) {
@@ -1791,16 +2518,49 @@ class QuizMasterApp {
             const btn = document.createElement('button');
             btn.textContent = i + 1;
             btn.className = 'btn';
+            
+            // Determine background color
+            let bgColor;
+            if (i === current) {
+                bgColor = '#667eea'; // Current question - purple
+            } else if (isCorrect) {
+                bgColor = '#28a745'; // Correct - green
+            } else {
+                bgColor = '#dc3545'; // Incorrect - red
+            }
+            
             btn.style.cssText = `
                 min-width: 40px;
-                padding: 8px 12px;
-                margin: 2px;
-                background: ${i === current ? '#667eea' : (isCorrect ? '#28a745' : '#dc3545')};
+                max-width: 40px;
+                height: 40px;
+                padding: 0;
+                margin: 0;
+                background: ${bgColor};
                 color: white;
                 opacity: ${i === current ? '1' : '0.7'};
                 font-weight: ${i === current ? 'bold' : 'normal'};
+                border: ${i === current ? '3px solid #fff' : 'none'};
+                box-shadow: ${i === current ? '0 0 0 2px #667eea' : 'none'};
+                transition: all 0.3s ease;
             `;
+            
             btn.onclick = () => this.navigateResults(i);
+            
+            // Add hover effect
+            btn.onmouseover = () => {
+                if (i !== current) {
+                    btn.style.opacity = '1';
+                    btn.style.transform = 'scale(1.1)';
+                }
+            };
+            
+            btn.onmouseout = () => {
+                if (i !== current) {
+                    btn.style.opacity = '0.7';
+                    btn.style.transform = 'scale(1)';
+                }
+            };
+            
             pageNumbersDiv.appendChild(btn);
         }
     }
@@ -1990,7 +2750,7 @@ class QuizMasterApp {
         });
         
         let html = '<div style="padding: 20px;"><h3>Score Distribution</h3>';
-        html += '<div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 40px;">';
+        html += '<div class="pie-chart-container" style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 40px;">';
         html += '<svg width="300" height="300" viewBox="0 0 300 300">';
         
         let currentAngle = 0;
@@ -2021,14 +2781,17 @@ class QuizMasterApp {
         });
         
         html += '</svg>';
-        html += '<div>';
+        html += '<div class="pie-chart-legend">';
         
         Object.entries(ranges).forEach(([label, data]) => {
             const percentage = ((data.count / allAttempts.length) * 100).toFixed(1);
             html += `
-                <div style="margin: 10px 0; display: flex; align-items: center;">
-                    <div style="width: 20px; height: 20px; background: ${data.color}; margin-right: 10px; border-radius: 4px;"></div>
-                    <span><strong>${label}:</strong> ${data.count} (${percentage}%)</span>
+                <div style="margin: 10px 0; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; flex: 1;">
+                        <div style="width: 20px; height: 20px; background: ${data.color}; margin-right: 10px; border-radius: 4px; flex-shrink: 0;"></div>
+                        <span><strong>${label}:</strong></span>
+                    </div>
+                    <span style="margin-left: 15px; white-space: nowrap;"><strong>${data.count} (${percentage}%)</strong></span>
                 </div>
             `;
         });
@@ -2127,7 +2890,7 @@ class QuizMasterApp {
             warningDiv.innerHTML = `
                 <div class="feedback-content" style="background: white; max-width: 400px;">
                     <div style="font-size: 4em; margin-bottom: 20px;">⚠️</div>
-                    <h2 style="color: #dc3545; margin-bottom: 15px;">Board Exam Ongoing!</h2>
+                    <h2 style="color: #dc3545; margin-bottom: 15px;">Exam Ongoing!</h2>
                     <p style="color: #495057; margin-bottom: 25px;">Please stay focused on your exam. You cannot switch tabs until you complete or exit the exam.</p>
                     <button class="btn btn-primary" onclick="this.closest('.feedback-overlay').remove()">
                         OK, Continue Exam
@@ -2148,6 +2911,8 @@ class QuizMasterApp {
             this.updateAnalytics();
         } else if (tab === 'take') {
             this.updateSelectOptions();
+        } else if (tab === 'notes') {
+            this.updateNotesList();
         } else if (tab === 'study') {
             // Update study mode select options
             const select = document.getElementById('studySelectBank');
@@ -2277,8 +3042,8 @@ class QuizMasterApp {
         nextBtn.style.opacity = nextBtn.disabled ? '0.5' : '1';
     }
 
-    clearBoardStats() {
-        if (!confirm('Are you sure you want to delete ALL Board Exam statistics? This cannot be undone!')) {
+    clearExamStats() {
+        if (!confirm('Are you sure you want to delete ALL Exam statistics? This cannot be undone!')) {
             return;
         }
 
@@ -2290,12 +3055,12 @@ class QuizMasterApp {
 
         this.saveData();
         this.updateAnalytics();
-        this.showToast('✅ Board Exam statistics cleared!', 'success');
+        this.showToast('✅ Exam statistics cleared!', 'success');
     }
 
     highlightActiveTab() {
         // Add visual indicator that exam is locked
-        const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Board Exam Mode tab
+        const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Exam Mode tab
         if (takeTab) {
             takeTab.style.animation = 'pulse 2s infinite';
             takeTab.style.boxShadow = '0 0 20px rgba(220, 53, 69, 0.6)';
@@ -2304,7 +3069,7 @@ class QuizMasterApp {
 
     removeTabHighlight() {
         // Remove visual indicator
-        const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Board Exam Mode tab
+        const takeTab = document.querySelector('.nav-tab:nth-child(2)'); // Exam Mode tab
         if (takeTab) {
             takeTab.style.animation = '';
             takeTab.style.boxShadow = '';
