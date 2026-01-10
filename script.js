@@ -16,7 +16,9 @@ class QuizMasterApp {
             immediateMode: true,
             isActive: false
         };
-        this.examLocked = false;            
+        this.examLocked = false; 
+        this.currentUser = null;
+        this.isLoggedIn = false;           
         this.init();
     }
 
@@ -35,23 +37,38 @@ class QuizMasterApp {
     // ============================================
 
     loadNotes() {
-        const saved = localStorage.getItem('quizMasterNotes');
-        if (saved) {
-            try {
-                this.notes = JSON.parse(saved);
-            } catch (error) {
-                console.error('Failed to load notes:', error);
+        // Only load from localStorage if not logged in
+        if (!this.isLoggedIn) {
+            const saved = localStorage.getItem('quizMasterNotes');
+            if (saved) {
+                try {
+                    this.notes = JSON.parse(saved);
+                } catch (error) {
+                    console.error('Failed to load notes:', error);
+                }
             }
         }
         this.updateNotesList();
     }
 
-    saveNotes() {
+    async saveNotes() {
+        if (!this.isLoggedIn) {
+            // Fallback to localStorage if not logged in
+            try {
+                localStorage.setItem('quizMasterNotes', JSON.stringify(this.notes));
+                return true;
+            } catch (error) {
+                this.showToast('Failed to save notes', 'error');
+                return false;
+            }
+        }
+        
         try {
-            localStorage.setItem('quizMasterNotes', JSON.stringify(this.notes));
+            await dbManager.saveNotes(this.notes);
             return true;
         } catch (error) {
-            this.showToast('Failed to save notes', 'error');
+            console.error('Firebase save notes error:', error);
+            this.showToast('Failed to save notes to cloud', 'error');
             return false;
         }
     }
@@ -707,28 +724,43 @@ class QuizMasterApp {
     // ============================================
 
     loadData() {
-        const saved = localStorage.getItem('quizMasterData');
-        if (saved) {
-            try {
-                this.testBanks = JSON.parse(saved);
-                console.log('Loaded test banks:', this.testBanks);
-            } catch (error) {
-                console.error('Failed to load data:', error);
-                this.showToast('Failed to load saved data', 'error');
+        // Only load from localStorage if not logged in
+        if (!this.isLoggedIn) {
+            const saved = localStorage.getItem('quizMasterData');
+            if (saved) {
+                try {
+                    this.testBanks = JSON.parse(saved);
+                    console.log('Loaded test banks:', this.testBanks);
+                } catch (error) {
+                    console.error('Failed to load data:', error);
+                    this.showToast('Failed to load saved data', 'error');
+                }
             }
         }
     }
 
-    saveData() {
+    async saveData() {
+        if (!this.isLoggedIn) {
+            // Fallback to localStorage if not logged in
+            try {
+                localStorage.setItem('quizMasterData', JSON.stringify(this.testBanks));
+                return true;
+            } catch (error) {
+                if (error.name === 'QuotaExceededError') {
+                    this.showToast('Storage limit exceeded!', 'error');
+                } else {
+                    this.showToast('Failed to save data', 'error');
+                }
+                return false;
+            }
+        }
+        
         try {
-            localStorage.setItem('quizMasterData', JSON.stringify(this.testBanks));
+            await dbManager.saveTestBanks(this.testBanks);
             return true;
         } catch (error) {
-            if (error.name === 'QuotaExceededError') {
-                this.showToast('Storage limit exceeded! Please export and delete old data.', 'error');
-            } else {
-                this.showToast('Failed to save data', 'error');
-            }
+            console.error('Firebase save error:', error);
+            this.showToast('Failed to save to cloud', 'error');
             return false;
         }
     }
@@ -1798,17 +1830,32 @@ class QuizMasterApp {
         return code;
     }
 
-    shareSingleBank(key) {
+    async shareSingleBank(key) {
+        if (!this.isLoggedIn) {
+            this.showToast('Please log in to share test banks', 'warning');
+            return;
+        }
+        
         this.currentShareKey = key;
         const singleBankData = {};
         singleBankData[key] = this.testBanks[key];
         
-        const shareCode = this.generateShareCode(singleBankData);
-        const shareLink = `QM-${shareCode}`;
+        this.showLoading('Creating share link...');
         
-        document.getElementById('shareCodeOutput').value = shareLink;
-        document.getElementById('shareModalTitle').textContent = `Share: ${this.testBanks[key].title}`;
-        document.getElementById('shareModal').classList.add('active');
+        try {
+            const shareCode = await dbManager.createShareCode(key, singleBankData);
+            const shareLink = `QM-${shareCode}`;
+            
+            document.getElementById('shareCodeOutput').value = shareLink;
+            document.getElementById('shareModalTitle').textContent = `Share: ${this.testBanks[key].title}`;
+            document.getElementById('shareModal').classList.add('active');
+            
+            this.hideLoading();
+        } catch (error) {
+            this.hideLoading();
+            console.error('Share error:', error);
+            this.showToast('Failed to create share link', 'error');
+        }
     }
 
     exportSingleBank() {
@@ -1946,56 +1993,45 @@ class QuizMasterApp {
         }
     }
 
-    importFromCode() {
+    async importFromCode() {
         const code = document.getElementById('importCodeInput').value.trim();
         
         if (!code) {
             this.showToast('Please paste a share link first!', 'warning');
             return;
         }
+        
+        if (!this.isLoggedIn) {
+            this.showToast('Please log in to import test banks', 'warning');
+            return;
+        }
 
         this.showLoading('Importing...');
 
-        setTimeout(() => {
-            try {
-                const cleanCode = code.replace('QM-', '');
-                const stored = localStorage.getItem(`share_${cleanCode}`);
-                
-                if (!stored) {
-                    this.hideLoading();
-                    this.showToast('❌ Invalid or expired share link', 'error');
-                    return;
+        try {
+            const result = await dbManager.importFromShareCode(code);
+            const bankKey = result.bankKey;
+            const bankData = result.bankData[bankKey];
+            
+            if (this.testBanks[bankKey]) {
+                if (confirm(`Test bank "${bankKey}" already exists. Overwrite?`)) {
+                    this.testBanks[bankKey] = bankData;
                 }
-
-                const shareData = JSON.parse(stored);
-                const importedData = shareData.data;
-                
-                let importCount = 0;
-                Object.keys(importedData).forEach(key => {
-                    if (this.testBanks[key]) {
-                        if (confirm(`Test bank "${key}" already exists. Overwrite?`)) {
-                            this.testBanks[key] = importedData[key];
-                            importCount++;
-                        }
-                    } else {
-                        this.testBanks[key] = importedData[key];
-                        importCount++;
-                    }
-                });
-
-                this.saveData();
-                this.updateTestBankList();
-                this.updateSelectOptions();
-                this.closeImportModal();
-                
-                this.hideLoading();
-                this.showToast(`✅ Successfully imported ${importCount} test bank(s)!`, 'success');
-            } catch (error) {
-                this.hideLoading();
-                this.showToast('❌ Invalid share link', 'error');
-                console.error('Import error:', error);
+            } else {
+                this.testBanks[bankKey] = bankData;
             }
-        }, 500);
+
+            await this.saveData();
+            this.updateTestBankList();
+            this.updateSelectOptions();
+            this.closeImportModal();
+            
+            this.hideLoading();
+            this.showToast('✅ Successfully imported test bank!', 'success');
+        } catch (error) {
+            this.hideLoading();
+            this.showToast(error.message, 'error');
+        }
     }
 
     // ============================================
@@ -3474,6 +3510,545 @@ LENGTH REQUIREMENT: ${lengthNote}`;
             
             // Call generate again with existing settings
             await this.generateWithGemini();
+        }
+    }
+
+    // ============================================
+    // FIXED USER AUTHENTICATION METHODS
+    // Replace these in your script.js
+    // ============================================
+
+    handleUserLogin(user) {
+        this.currentUser = user;
+        this.isLoggedIn = true;
+        dbManager.setUser(user.uid);
+        
+        this.showUserInterface();
+        this.loadUserData();
+    }
+
+    handleUserLogout() {
+        this.currentUser = null;
+        this.isLoggedIn = false;
+        this.showAuthInterface();
+        
+        // Clear local data
+        this.testBanks = {};
+        this.notes = {};
+        this.updateTestBankList();
+        this.updateNotesList();
+    }
+
+    showUserInterface() {
+        // Desktop: Hide auth buttons, show user menu
+        const desktopAuthButtons = document.getElementById('desktopAuthButtons');
+        const desktopUserMenu = document.getElementById('desktopUserMenu');
+        if (desktopAuthButtons) {
+            desktopAuthButtons.style.display = 'none';
+            desktopAuthButtons.style.visibility = 'hidden';
+        }
+        if (desktopUserMenu) {
+            desktopUserMenu.style.display = 'flex';
+            desktopUserMenu.style.visibility = 'visible';
+        }
+        
+        // Mobile: Hide auth buttons, show user menu
+        const mobileAuthButtons = document.getElementById('mobileAuthButtons');
+        const mobileUserMenu = document.getElementById('mobileUserMenu');
+        if (mobileAuthButtons) {
+            mobileAuthButtons.style.display = 'none';
+            mobileAuthButtons.style.visibility = 'hidden';
+        }
+        if (mobileUserMenu) {
+            mobileUserMenu.style.display = 'flex';
+            mobileUserMenu.style.visibility = 'visible';
+        }
+        
+        // Update username display
+        authManager.getCurrentUsername().then(username => {
+            const desktopUsername = document.getElementById('desktopUsername');
+            const mobileUsername = document.getElementById('mobileUsername');
+            if (desktopUsername) desktopUsername.textContent = username;
+            if (mobileUsername) mobileUsername.textContent = username;
+        }).catch(error => {
+            console.error('Failed to get username:', error);
+        });
+    }
+
+    showAuthInterface() {
+        // Desktop: Show auth buttons, hide user menu
+        const desktopAuthButtons = document.getElementById('desktopAuthButtons');
+        const desktopUserMenu = document.getElementById('desktopUserMenu');
+        if (desktopAuthButtons) {
+            desktopAuthButtons.style.display = 'flex';
+            desktopAuthButtons.style.visibility = 'visible';
+        }
+        if (desktopUserMenu) {
+            desktopUserMenu.style.display = 'none';
+            desktopUserMenu.style.visibility = 'hidden';
+        }
+        
+        // Mobile: Show auth buttons, hide user menu
+        const mobileAuthButtons = document.getElementById('mobileAuthButtons');
+        const mobileUserMenu = document.getElementById('mobileUserMenu');
+        if (mobileAuthButtons) {
+            mobileAuthButtons.style.display = 'flex';
+            mobileAuthButtons.style.visibility = 'visible';
+        }
+        if (mobileUserMenu) {
+            mobileUserMenu.style.display = 'none';
+            mobileUserMenu.style.visibility = 'hidden';
+        }
+    }
+
+    async loadUserData() {
+        try {
+            this.showLoading('Loading your data...');
+            
+            // Load test banks
+            const testBanks = await dbManager.loadTestBanks();
+            this.testBanks = testBanks;
+            this.updateTestBankList();
+            this.updateSelectOptions();
+            
+            // Load notes
+            const notes = await dbManager.loadNotes();
+            this.notes = notes;
+            this.updateNotesList();
+            
+            this.hideLoading();
+            this.showToast('Welcome back!', 'success');
+        } catch (error) {
+            this.hideLoading();
+            console.error('Load user data error:', error);
+            this.showToast('Failed to load data', 'error');
+        }
+    }
+
+    // ============================================
+    // AUTH MODALS
+    // ============================================
+
+    showLoginModal() {
+        const modal = document.getElementById('loginModal');
+        if (modal) modal.classList.add('active');
+        
+        const usernameInput = document.getElementById('loginUsername');
+        const passwordInput = document.getElementById('loginPassword');
+        if (usernameInput) usernameInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        
+        this.closeMobileMenu();
+    }
+
+    closeLoginModal() {
+        const modal = document.getElementById('loginModal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    showSignupModal() {
+        const modal = document.getElementById('signupModal');
+        if (modal) modal.classList.add('active');
+        
+        const usernameInput = document.getElementById('signupUsername');
+        const passwordInput = document.getElementById('signupPassword');
+        const confirmInput = document.getElementById('signupConfirmPassword');
+        const passwordMsg = document.getElementById('signupPasswordMessage');
+        const confirmMsg = document.getElementById('signupConfirmMessage');
+        
+        if (usernameInput) usernameInput.value = '';
+        if (passwordInput) passwordInput.value = '';
+        if (confirmInput) confirmInput.value = '';
+        if (passwordMsg) passwordMsg.textContent = '';
+        if (confirmMsg) confirmMsg.textContent = '';
+        
+        this.closeMobileMenu();
+    }
+
+    closeSignupModal() {
+        const modal = document.getElementById('signupModal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    showUserModal() {
+        const modal = document.getElementById('userModal');
+        if (modal) modal.classList.add('active');
+        
+        const newUsernameInput = document.getElementById('newUsername');
+        const currentPassInput = document.getElementById('currentPassword');
+        const newPassInput = document.getElementById('newPassword');
+        const confirmPassInput = document.getElementById('confirmNewPassword');
+        const newPassMsg = document.getElementById('newPasswordMessage');
+        const confirmPassMsg = document.getElementById('confirmNewPasswordMessage');
+        
+        if (newUsernameInput) newUsernameInput.value = '';
+        if (currentPassInput) currentPassInput.value = '';
+        if (newPassInput) newPassInput.value = '';
+        if (confirmPassInput) confirmPassInput.value = '';
+        if (newPassMsg) newPassMsg.textContent = '';
+        if (confirmPassMsg) confirmPassMsg.textContent = '';
+        
+        this.closeMobileMenu();
+    }
+
+    closeUserModal() {
+        const modal = document.getElementById('userModal');
+        if (modal) modal.classList.remove('active');
+    }
+
+    switchToSignup() {
+        this.closeLoginModal();
+        this.showSignupModal();
+    }
+
+    switchToLogin() {
+        this.closeSignupModal();
+        this.showLoginModal();
+    }
+
+    // ============================================
+    // MOBILE MENU
+    // ============================================
+
+    toggleMobileMenu() {
+        const overlay = document.getElementById('mobileMenuOverlay');
+        const hamburger = document.getElementById('hamburgerBtn');
+        
+        if (!overlay || !hamburger) return;
+        
+        if (overlay.classList.contains('active')) {
+            this.closeMobileMenu();
+        } else {
+            overlay.classList.add('active');
+            hamburger.classList.add('active');
+        }
+    }
+
+    closeMobileMenu() {
+        const overlay = document.getElementById('mobileMenuOverlay');
+        const hamburger = document.getElementById('hamburgerBtn');
+        
+        if (overlay) overlay.classList.remove('active');
+        if (hamburger) hamburger.classList.remove('active');
+    }
+
+    // ============================================
+    // PASSWORD VALIDATION
+    // ============================================
+
+    togglePasswordVisibility(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        
+        const button = input.nextElementSibling;
+        if (!button) return;
+        
+        const icon = button.querySelector('.eye-icon');
+        if (!icon) return;
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.textContent = '👁️‍🗨️';
+        } else {
+            input.type = 'password';
+            icon.textContent = '👁️';
+        }
+    }
+
+    validatePassword(inputId) {
+        const input = document.getElementById(inputId);
+        const message = document.getElementById(inputId + 'Message');
+        
+        if (!input || !message) return;
+        
+        const password = input.value;
+        
+        if (password.length === 0) {
+            message.textContent = '';
+            message.className = 'input-message';
+            return;
+        }
+        
+        if (password.length < 6) {
+            message.textContent = '❌ Password too short (minimum 6 characters)';
+            message.className = 'input-message error';
+            return;
+        }
+        
+        if (password.length < 8) {
+            message.textContent = '⚠️ Weak password (recommended 8+ characters)';
+            message.className = 'input-message warning';
+            return;
+        }
+        
+        const hasUpper = /[A-Z]/.test(password);
+        const hasLower = /[a-z]/.test(password);
+        const hasNumber = /[0-9]/.test(password);
+        const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+        
+        const strength = [hasUpper, hasLower, hasNumber, hasSpecial].filter(Boolean).length;
+        
+        if (strength >= 3) {
+            message.textContent = '✅ Strong password';
+            message.className = 'input-message success';
+        } else if (strength >= 2) {
+            message.textContent = '✓ Good password';
+            message.className = 'input-message info';
+        } else {
+            message.textContent = '⚠️ Consider adding numbers or special characters';
+            message.className = 'input-message warning';
+        }
+    }
+
+    validateConfirmPassword(context) {
+        let passwordId, confirmId, messageId;
+        
+        if (context === 'signup') {
+            passwordId = 'signupPassword';
+            confirmId = 'signupConfirmPassword';
+            messageId = 'signupConfirmMessage';
+        } else if (context === 'user') {
+            passwordId = 'newPassword';
+            confirmId = 'confirmNewPassword';
+            messageId = 'confirmNewPasswordMessage';
+        }
+        
+        const password = document.getElementById(passwordId);
+        const confirm = document.getElementById(confirmId);
+        const message = document.getElementById(messageId);
+        
+        if (!password || !confirm || !message) return;
+        
+        if (confirm.value.length === 0) {
+            message.textContent = '';
+            message.className = 'input-message';
+            return;
+        }
+        
+        if (password.value === confirm.value) {
+            message.textContent = '✅ Passwords match';
+            message.className = 'input-message success';
+        } else {
+            message.textContent = '❌ Passwords do not match';
+            message.className = 'input-message error';
+        }
+    }
+
+    // ============================================
+    // AUTH ACTIONS
+    // ============================================
+
+    async loginUser() {
+        const usernameInput = document.getElementById('loginUsername');
+        const passwordInput = document.getElementById('loginPassword');
+        
+        if (!usernameInput || !passwordInput) {
+            this.showToast('Form elements not found', 'error');
+            return;
+        }
+        
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        
+        if (!username || !password) {
+            this.showToast('Please fill in all fields', 'warning');
+            return;
+        }
+        
+        this.showLoading('Logging in...');
+        
+        try {
+            await authManager.signIn(username, password);
+            this.closeLoginModal();
+            this.hideLoading();
+        } catch (error) {
+            this.hideLoading();
+            this.showToast(error.message, 'error');
+        }
+    }
+
+    async signupUser() {
+        const usernameInput = document.getElementById('signupUsername');
+        const passwordInput = document.getElementById('signupPassword');
+        const confirmInput = document.getElementById('signupConfirmPassword');
+        
+        if (!usernameInput || !passwordInput || !confirmInput) {
+            this.showToast('Form elements not found', 'error');
+            return;
+        }
+        
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+        const confirmPassword = confirmInput.value;
+        
+        if (!username || !password || !confirmPassword) {
+            this.showToast('Please fill in all fields', 'warning');
+            return;
+        }
+        
+        if (username.length < 3) {
+            this.showToast('Username must be at least 3 characters', 'warning');
+            return;
+        }
+        
+        if (password.length < 6) {
+            this.showToast('Password must be at least 6 characters', 'warning');
+            return;
+        }
+        
+        if (password !== confirmPassword) {
+            this.showToast('Passwords do not match', 'error');
+            return;
+        }
+        
+        this.showLoading('Creating account...');
+        
+        try {
+            await authManager.signUp(username, password);
+            this.closeSignupModal();
+            this.hideLoading();
+            this.showToast('Account created successfully!', 'success');
+        } catch (error) {
+            this.hideLoading();
+            if (error.message.includes('already taken')) {
+                this.showToast('Username already taken', 'error');
+            } else {
+                this.showToast(error.message, 'error');
+            }
+        }
+    }
+
+    async logoutUser() {
+        if (confirm('Are you sure you want to log out?')) {
+            this.showLoading('Logging out...');
+            
+            try {
+                await authManager.signOut();
+                this.hideLoading();
+                this.showToast('Logged out successfully', 'info');
+                this.closeMobileMenu();
+            } catch (error) {
+                this.hideLoading();
+                this.showToast('Failed to log out', 'error');
+            }
+        }
+    }
+
+    async updateUsername() {
+        const newUsernameInput = document.getElementById('newUsername');
+        if (!newUsernameInput) return;
+        
+        const newUsername = newUsernameInput.value.trim();
+        
+        if (!newUsername) {
+            this.showToast('Please enter a new username', 'warning');
+            return;
+        }
+        
+        if (newUsername.length < 3) {
+            this.showToast('Username must be at least 3 characters', 'warning');
+            return;
+        }
+        
+        this.showLoading('Updating username...');
+        
+        try {
+            await authManager.updateUsername(newUsername);
+            
+            const desktopUsername = document.getElementById('desktopUsername');
+            const mobileUsername = document.getElementById('mobileUsername');
+            if (desktopUsername) desktopUsername.textContent = newUsername;
+            if (mobileUsername) mobileUsername.textContent = newUsername;
+            
+            this.hideLoading();
+            this.showToast('Username updated successfully!', 'success');
+            newUsernameInput.value = '';
+        } catch (error) {
+            this.hideLoading();
+            if (error.message.includes('already taken')) {
+                this.showToast('Username already taken', 'error');
+            } else {
+                this.showToast(error.message, 'error');
+            }
+        }
+    }
+
+    async updatePassword() {
+        const currentPasswordInput = document.getElementById('currentPassword');
+        const newPasswordInput = document.getElementById('newPassword');
+        const confirmNewPasswordInput = document.getElementById('confirmNewPassword');
+        
+        if (!currentPasswordInput || !newPasswordInput || !confirmNewPasswordInput) return;
+        
+        const currentPassword = currentPasswordInput.value;
+        const newPassword = newPasswordInput.value;
+        const confirmNewPassword = confirmNewPasswordInput.value;
+        
+        if (!currentPassword || !newPassword || !confirmNewPassword) {
+            this.showToast('Please fill in all fields', 'warning');
+            return;
+        }
+        
+        if (newPassword.length < 6) {
+            this.showToast('New password must be at least 6 characters', 'warning');
+            return;
+        }
+        
+        if (newPassword !== confirmNewPassword) {
+            this.showToast('New passwords do not match', 'error');
+            return;
+        }
+        
+        this.showLoading('Updating password...');
+        
+        try {
+            await authManager.updatePassword(currentPassword, newPassword);
+            
+            this.hideLoading();
+            this.showToast('Password updated successfully!', 'success');
+            
+            currentPasswordInput.value = '';
+            newPasswordInput.value = '';
+            confirmNewPasswordInput.value = '';
+            
+            const newPasswordMsg = document.getElementById('newPasswordMessage');
+            const confirmPasswordMsg = document.getElementById('confirmNewPasswordMessage');
+            if (newPasswordMsg) newPasswordMsg.textContent = '';
+            if (confirmPasswordMsg) confirmPasswordMsg.textContent = '';
+        } catch (error) {
+            this.hideLoading();
+            if (error.code === 'auth/wrong-password') {
+                this.showToast('Current password is incorrect', 'error');
+            } else {
+                this.showToast('Failed to update password', 'error');
+            }
+        }
+    }
+
+    async confirmDeleteAccount() {
+        const confirmed = confirm('⚠️ WARNING: This action cannot be undone!\n\nAll your test banks, notes, and data will be permanently deleted.\n\nAre you absolutely sure you want to delete your account?');
+        
+        if (!confirmed) return;
+        
+        const password = prompt('Enter your password to confirm account deletion:');
+        
+        if (!password) return;
+        
+        this.showLoading('Deleting account...');
+        
+        try {
+            await authManager.deleteAccount(password);
+            
+            this.closeUserModal();
+            this.hideLoading();
+            this.showToast('Account deleted successfully', 'info');
+        } catch (error) {
+            this.hideLoading();
+            if (error.code === 'auth/wrong-password') {
+                this.showToast('Incorrect password', 'error');
+            } else {
+                this.showToast('Failed to delete account', 'error');
+            }
         }
     }
 }
