@@ -7,6 +7,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#667eea">
     <title>QuizMaster</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -15,13 +20,56 @@
         <span id="themeIcon">☀️</span>
     </button>
 
+    <!-- Hamburger Menu (Mobile) -->
+    <button class="hamburger-menu" onclick="app.toggleMobileMenu()" id="hamburgerBtn">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+
     <button class="gemini-btn" onclick="app.showGeminiModal()" title="AI Generate Questions">
         ✨<span id="themeIcon">AI</span>
     </button>
 
     <div class="container">
+        <!-- Header with Auth Buttons -->
         <div class="header">
-            <h1>📚 QuizMaster</h1>
+            <div class="header-content">
+                <h1 class="header-logo">📚 QuizMaster</h1>
+                
+                <!-- Desktop Auth Buttons (shown when NOT logged in) -->
+                <div class="auth-buttons desktop-only" id="desktopAuthButtons">
+                    <button class="btn btn-outline" onclick="app.showLoginModal()">Log In</button>
+                    <button class="btn btn-primary" onclick="app.showSignupModal()">Sign Up</button>
+                </div>
+
+                <!-- Desktop User Menu (shown when logged in) -->
+                <div class="user-menu desktop-only" id="desktopUserMenu" style="display: none;">
+                    <button class="btn btn-user" onclick="app.showUserModal()" id="desktopUsernameBtn">
+                        <span>👤</span> <span id="desktopUsername">User</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="app.logoutUser()">Log Out</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Menu Overlay -->
+        <div class="mobile-menu-overlay" id="mobileMenuOverlay">
+            <div class="mobile-menu-content">
+                <!-- Mobile Auth buttons (shown when NOT logged in) -->
+                <div id="mobileAuthButtons">
+                    <button class="btn btn-outline mobile-menu-btn" onclick="app.showLoginModal()">Log In</button>
+                    <button class="btn btn-primary mobile-menu-btn" onclick="app.showSignupModal()">Sign Up</button>
+                </div>
+
+                <!-- Mobile User menu (shown when logged in) -->
+                <div id="mobileUserMenu" style="display: none;">
+                    <button class="btn btn-user mobile-menu-btn" onclick="app.showUserModal()">
+                        <span>👤</span> <span id="mobileUsername">User</span>
+                    </button>
+                    <button class="btn btn-secondary mobile-menu-btn" onclick="app.logoutUser()">Log Out</button>
+                </div>
+            </div>
         </div>
 
         <div class="nav-tabs">
@@ -266,6 +314,129 @@
                     <button class="btn btn-primary" onclick="app.showAnalyticsChart('table')">📋 Table View</button>
                 </div>
                 <div id="analyticsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal auth-modal">
+        <div class="modal-content auth-modal-content">
+            <div class="modal-header">
+                <h2 style="margin: 0;">🔐 Log In to QuizMaster</h2>
+                <button class="modal-close-btn" onclick="app.closeLoginModal()">×</button>
+            </div>
+            <div style="padding: 20px 0;">
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="loginUsername" placeholder="Enter your username" autocomplete="username">
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('loginPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="app.loginUser()" style="width: 100%; margin-top: 20px;">Log In</button>
+                <p style="text-align: center; margin-top: 15px; color: #6c757d;">
+                    Don't have an account? <a href="#" onclick="app.switchToSignup(); return false;" style="color: #667eea; font-weight: 600;">Sign Up</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sign Up Modal -->
+    <div id="signupModal" class="modal auth-modal">
+        <div class="modal-content auth-modal-content">
+            <div class="modal-header">
+                <h2 style="margin: 0;">✨ Create QuizMaster Account</h2>
+                <button class="modal-close-btn" onclick="app.closeSignupModal()">×</button>
+            </div>
+            <div style="padding: 20px 0;">
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="signupUsername" placeholder="Choose a username" autocomplete="username">
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="signupPassword" placeholder="Create a password" oninput="app.validatePassword('signupPassword')" autocomplete="new-password">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('signupPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="input-message" id="signupPasswordMessage"></small>
+                </div>
+                <div class="input-group">
+                    <label>Confirm Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="signupConfirmPassword" placeholder="Confirm your password" oninput="app.validateConfirmPassword('signup')" autocomplete="new-password">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('signupConfirmPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="input-message" id="signupConfirmMessage"></small>
+                </div>
+                <button class="btn btn-primary" onclick="app.signupUser()" style="width: 100%; margin-top: 20px;">Create Account</button>
+                <p style="text-align: center; margin-top: 15px; color: #6c757d;">
+                    Already have an account? <a href="#" onclick="app.switchToLogin(); return false;" style="color: #667eea; font-weight: 600;">Log In</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Management Modal -->
+    <div id="userModal" class="modal auth-modal">
+        <div class="modal-content auth-modal-content">
+            <div class="modal-header">
+                <h2 style="margin: 0;">⚙️ Manage Account</h2>
+                <button class="modal-close-btn" onclick="app.closeUserModal()">×</button>
+            </div>
+            <div style="padding: 20px 0;">
+                <h3 style="margin-bottom: 15px;">Change Username</h3>
+                <div class="input-group">
+                    <label>New Username</label>
+                    <input type="text" id="newUsername" placeholder="Enter new username">
+                </div>
+                <button class="btn btn-primary" onclick="app.updateUsername()" style="width: 100%; margin-bottom: 30px;">Update Username</button>
+
+                <h3 style="margin-bottom: 15px;">Change Password</h3>
+                <div class="input-group">
+                    <label>Current Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="currentPassword" placeholder="Enter current password">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('currentPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>New Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="newPassword" placeholder="Enter new password" oninput="app.validatePassword('newPassword')">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('newPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="input-message" id="newPasswordMessage"></small>
+                </div>
+                <div class="input-group">
+                    <label>Confirm New Password</label>
+                    <div class="password-input-wrapper">
+                        <input type="password" id="confirmNewPassword" placeholder="Confirm new password" oninput="app.validateConfirmPassword('user')">
+                        <button class="password-toggle" onclick="app.togglePasswordVisibility('confirmNewPassword')" type="button">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="input-message" id="confirmNewPasswordMessage"></small>
+                </div>
+                <button class="btn btn-primary" onclick="app.updatePassword()" style="width: 100%; margin-bottom: 30px;">Update Password</button>
+
+                <h3 style="margin-bottom: 15px; color: #dc3545;">⚠️ Danger Zone</h3>
+                <p style="color: #6c757d; margin-bottom: 15px;">Once you delete your account, there is no going back. All your data will be permanently deleted.</p>
+                <button class="btn btn-danger" onclick="app.confirmDeleteAccount()" style="width: 100%;">Delete Account</button>
             </div>
         </div>
     </div>
@@ -530,6 +701,10 @@
         </div>
     </div>
 
+    <!-- CRITICAL: Load scripts in this exact order -->
+    <script src="firebase-config.js"></script>
+    <script src="auth-manager.js"></script>
+    <script src="database-manager.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
