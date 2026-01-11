@@ -564,6 +564,7 @@ class QuizMasterApp {
                 
                 document.getElementById('pdfFrame').src = pdfData;
                 document.getElementById('pdfViewerModal').classList.add('active');
+                document.body.classList.add('modal-open');
                 
                 this.hideLoading();
                 this.showToast('✅ PDF saved to notes!', 'success');
@@ -589,10 +590,12 @@ class QuizMasterApp {
         
         document.getElementById('pdfFrame').src = note.pdfData;
         document.getElementById('pdfViewerModal').classList.add('active');
+        document.body.classList.add('modal-open');
     }
 
     closePDFViewer() {
         document.getElementById('pdfViewerModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
         document.getElementById('pdfFrame').src = '';
         
         // Exit fullscreen if active
@@ -772,31 +775,42 @@ class QuizMasterApp {
     toggleDarkMode() {
         const button = document.querySelector('.theme-toggle');
         const icon = document.getElementById('themeIcon');
+        const mobileIcon = document.getElementById('mobileThemeIcon');
+        const mobileIconGuest = document.getElementById('mobileThemeIconGuest');
         
         // Add rotation animation
-        button.classList.add('rotating');
+        if (button) button.classList.add('rotating');
         
         setTimeout(() => {
             document.body.classList.toggle('dark-mode');
             const isDark = document.body.classList.contains('dark-mode');
             
             // Change icon based on mode
-            icon.textContent = isDark ? '🌙' : '☀️';
+            const iconText = isDark ? '🌙' : '☀️';
+            if (icon) icon.textContent = iconText;
+            if (mobileIcon) mobileIcon.textContent = iconText;
+            if (mobileIconGuest) mobileIconGuest.textContent = iconText;
             
             localStorage.setItem('darkMode', isDark);
-            button.classList.remove('rotating');
+            if (button) button.classList.remove('rotating');
         }, 250);
     }
 
     loadDarkMode() {
         const isDark = localStorage.getItem('darkMode') === 'true';
         const icon = document.getElementById('themeIcon');
+        const mobileIcon = document.getElementById('mobileThemeIcon');
+        const mobileIconGuest = document.getElementById('mobileThemeIconGuest');
         
         if (isDark) {
             document.body.classList.add('dark-mode');
             if (icon) icon.textContent = '🌙';
+            if (mobileIcon) mobileIcon.textContent = '🌙';
+            if (mobileIconGuest) mobileIconGuest.textContent = '🌙';
         } else {
             if (icon) icon.textContent = '☀️';
+            if (mobileIcon) mobileIcon.textContent = '☀️';
+            if (mobileIconGuest) mobileIconGuest.textContent = '☀️';
         }
     }
 
@@ -1089,6 +1103,7 @@ class QuizMasterApp {
         this.renderViewQuestions(bank.questions);
         
         document.getElementById('viewModal').classList.add('active');
+        document.body.classList.add('modal-open');
     }
 
     renderViewQuestions(questions) {
@@ -1150,6 +1165,7 @@ class QuizMasterApp {
 
     closeViewModal() {
         document.getElementById('viewModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
     }
 
     editBank(key) {
@@ -1180,6 +1196,7 @@ class QuizMasterApp {
         }, 100);
         
         document.getElementById('editModal').classList.add('active');
+        document.body.classList.add('modal-open');
     }
 
     handleEditQuestionsInputChange() {
@@ -1614,6 +1631,7 @@ class QuizMasterApp {
 
     closeEditModal() {
         document.getElementById('editModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
         this.currentEditingBank = null;
     }
 
@@ -1645,10 +1663,12 @@ class QuizMasterApp {
 
     showExportAllModal() {
         document.getElementById('exportAllModal').classList.add('active');
+        document.body.classList.add('modal-open');
     }
 
     closeExportAllModal() {
         document.getElementById('exportAllModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
     }
 
     exportAllAsJSON() {
@@ -1765,11 +1785,13 @@ class QuizMasterApp {
 
     showImportModal() {
         document.getElementById('importModal').classList.add('active');
+        document.body.classList.add('modal-open');
         document.getElementById('importCodeInput').value = '';
     }
 
     closeImportModal() {
         document.getElementById('importModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
     }
 
     importData(event) {
@@ -1849,6 +1871,7 @@ class QuizMasterApp {
             document.getElementById('shareCodeOutput').value = shareLink;
             document.getElementById('shareModalTitle').textContent = `Share: ${this.testBanks[key].title}`;
             document.getElementById('shareModal').classList.add('active');
+            document.body.classList.add('modal-open');
             
             this.hideLoading();
         } catch (error) {
@@ -1978,6 +2001,7 @@ class QuizMasterApp {
 
     closeShareModal() {
         document.getElementById('shareModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
     }
 
     copyShareCode() {
@@ -3118,6 +3142,7 @@ class QuizMasterApp {
 
     showGeminiModal() {
         document.getElementById('geminiModal').classList.add('active');
+        document.body.classList.add('modal-open');
         document.getElementById('geminiResult').style.display = 'none';
         document.getElementById('geminiOutput').value = '';
         document.getElementById('geminiInitialButtons').style.display = 'block';
@@ -3249,6 +3274,7 @@ class QuizMasterApp {
 
     closeGeminiModal() {
         document.getElementById('geminiModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
     }
 
     async generateWithGemini() {
@@ -3631,7 +3657,10 @@ LENGTH REQUIREMENT: ${lengthNote}`;
 
     showLoginModal() {
         const modal = document.getElementById('loginModal');
-        if (modal) modal.classList.add('active');
+        if (modal) {
+            modal.classList.add('active');
+            document.body.classList.add('modal-open');
+        }
         
         const usernameInput = document.getElementById('loginUsername');
         const passwordInput = document.getElementById('loginPassword');
@@ -3643,12 +3672,18 @@ LENGTH REQUIREMENT: ${lengthNote}`;
 
     closeLoginModal() {
         const modal = document.getElementById('loginModal');
-        if (modal) modal.classList.remove('active');
+        if (modal) {
+            modal.classList.remove('active');
+            document.body.classList.remove('modal-open');
+        }
     }
 
     showSignupModal() {
         const modal = document.getElementById('signupModal');
-        if (modal) modal.classList.add('active');
+        if (modal) {
+            modal.classList.add('active');
+            document.body.classList.add('modal-open');
+        }
         
         const usernameInput = document.getElementById('signupUsername');
         const passwordInput = document.getElementById('signupPassword');
@@ -3667,12 +3702,18 @@ LENGTH REQUIREMENT: ${lengthNote}`;
 
     closeSignupModal() {
         const modal = document.getElementById('signupModal');
-        if (modal) modal.classList.remove('active');
+        if (modal) {
+            modal.classList.remove('active');
+            document.body.classList.remove('modal-open');
+        }
     }
 
     showUserModal() {
         const modal = document.getElementById('userModal');
-        if (modal) modal.classList.add('active');
+        if (modal) {
+            modal.classList.add('active');
+            document.body.classList.add('modal-open');
+        }
         
         const newUsernameInput = document.getElementById('newUsername');
         const currentPassInput = document.getElementById('currentPassword');
@@ -3693,7 +3734,10 @@ LENGTH REQUIREMENT: ${lengthNote}`;
 
     closeUserModal() {
         const modal = document.getElementById('userModal');
-        if (modal) modal.classList.remove('active');
+        if (modal) {
+            modal.classList.remove('active');
+            document.body.classList.remove('modal-open');
+        }
     }
 
     switchToSignup() {
