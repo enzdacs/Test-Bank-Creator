@@ -6,6 +6,8 @@ class QuizMasterApp {
         this.currentEditingBank = null;
         this.notes = {};
         this.currentEditingNote = null;
+        this.noteHasChanges = false;
+        this.tinymceInitialized = false;
         this.isFullscreen = false;
         this.quizState = {
             currentIndex: 0,
@@ -30,6 +32,7 @@ class QuizMasterApp {
         this.updateTestBankList();
         this.updateSelectOptions();
         this.updateAnalytics();
+        this.setupAutoSaveOnUnload(); // Add auto-save on page refresh
     }
 
     // ============================================
@@ -53,23 +56,68 @@ class QuizMasterApp {
 
     async saveNotes() {
         if (!this.isLoggedIn) {
-            // Fallback to localStorage if not logged in
-            try {
-                localStorage.setItem('quizMasterNotes', JSON.stringify(this.notes));
-                return true;
-            } catch (error) {
-                this.showToast('Failed to save notes', 'error');
-                return false;
-            }
+            localStorage.setItem('quizMasterNotes', JSON.stringify(this.notes));
+            return true;
         }
-        
         try {
             await dbManager.saveNotes(this.notes);
             return true;
         } catch (error) {
-            console.error('Firebase save notes error:', error);
-            this.showToast('Failed to save notes to cloud', 'error');
+            console.error('Firebase notes save error:', error);
             return false;
+        }
+    }
+
+    async saveNote() {
+        const titleInput = document.getElementById('noteTitle');
+        const title = titleInput.value.trim();
+        
+        // Get content specifically checking for TinyMCE initialization
+        let content = '';
+        if (this.tinymceInitialized && tinymce.get('noteContent')) {
+            content = tinymce.get('noteContent').getContent();
+        }
+
+        if (!title) {
+            this.showToast('⚠️ Please enter a title', 'warning');
+            return;
+        }
+
+        // DUPLICATE CHECK: 
+        // We check if any OTHER note has this title.
+        const isDuplicate = Object.keys(this.notes).some(key => {
+            return key !== this.currentEditingNote && this.notes[key].title === title;
+        });
+
+        if (isDuplicate) {
+            this.showToast('⚠️ Note name exists!', 'warning');
+            return;
+        }
+
+        // KEY ASSIGNMENT:
+        // If it's the temporary "NEW" note, we give it a real Timestamp ID now.
+        let key = this.currentEditingNote;
+        if (key === "NEW_TEMP_NOTE") {
+            key = Date.now().toString();
+        }
+
+        // Save into the main data object
+        this.notes[key] = {
+            title: title,
+            content: content,
+            lastModified: new Date().toISOString(),
+            createdAt: this.notes[key]?.createdAt || new Date().toISOString(),
+            isPDF: false
+        };
+
+        const success = await this.saveNotes();
+        if (success) {
+            this.currentEditingNote = key; // The note is now "Existing", update the pointer
+            this.noteHasChanges = false;
+            this.updateNotesList();
+            this.showToast('✅ Note saved successfully!', 'success');
+        } else {
+            this.showToast('❌ Save failed. Check storage.', 'error');
         }
     }
 
@@ -82,7 +130,7 @@ class QuizMasterApp {
         Object.keys(this.notes).forEach(key => {
             const note = this.notes[key];
             const card = document.createElement('div');
-            card.className = 'test-bank-card note-card';
+            card.className = 'test-bank-card note-card'; // Keeps your existing styling
             
             const preview = note.content.replace(/<[^>]*>/g, '').substring(0, 100);
             const wordCount = note.content.split(/\s+/).filter(w => w.length > 0).length;
@@ -90,386 +138,293 @@ class QuizMasterApp {
             const isPDF = note.isPDF === true;
             const icon = isPDF ? '📄' : '📝';
 
+            const createdDate = note.createdAt ? new Date(note.createdAt) : new Date(note.lastModified);
+            const formattedCreatedDate = `${String(createdDate.getMonth() + 1).padStart(2, '0')}/${String(createdDate.getDate()).padStart(2, '0')}/${createdDate.getFullYear()}`;
+            const formattedCreatedTime = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}:${String(createdDate.getSeconds()).padStart(2, '0')}`;
+            
+            let editedHTML = '';
+            if (!isPDF && note.lastModified && note.createdAt && note.lastModified !== note.createdAt) {
+                const editedDate = new Date(note.lastModified);
+                const editedFormattedDate = `${String(editedDate.getMonth() + 1).padStart(2, '0')}/${String(editedDate.getDate()).padStart(2, '0')}/${editedDate.getFullYear()}`;
+                const editedFormattedTime = `${String(editedDate.getHours()).padStart(2, '0')}:${String(editedDate.getMinutes()).padStart(2, '0')}:${String(editedDate.getSeconds()).padStart(2, '0')}`;
+                editedHTML = `<p style="margin: 3px 0; font-size: 0.8em; color: #6c757d; font-style: italic;">Edited: ${editedFormattedDate} | ${editedFormattedTime}</p>`;
+            }
+
+            // The innerHTML structure below is now identical to the Manage tab
             card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
-                    <div style="flex: 1;">
-                        <h3 style="margin-bottom: 8px;">${icon} ${this.escapeHtml(note.title)}</h3>
-                        ${!isPDF ? `
-                            <p style="margin: 5px 0; font-size: 0.9em; color: #6c757d; font-style: italic;">
-                                ${preview}${preview.length >= 100 ? '...' : ''}
-                            </p>
-                            <p style="margin: 8px 0 3px 0; font-size: 0.85em;">📊 ${wordCount} words</p>
-                        ` : '<p style="margin: 5px 0; font-size: 0.9em; color: #6c757d;">PDF Document</p>'}
-                        <p style="margin: 3px 0; font-size: 0.85em;">🕐 ${new Date(note.lastModified).toLocaleDateString()}</p>
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
-                        ${isPDF ? `
+                <h3 style="margin-bottom: 15px;">${icon} ${this.escapeHtml(note.title)}</h3>
+                
+                <div class="bank-default-content">
+                    <div style="display: flex; justify-content: space-between; align-items: start; gap: 15px;">
+                        <div class="bank-info-section" style="flex: 1;">
+                            <p style="margin: 3px 0;">${isPDF ? 'PDF Document' : 'Note Document'}</p>
+                            <p style="margin: 3px 0; font-size: 0.8em; color: #6c757d; font-style: italic;">Created: ${formattedCreatedDate} | ${formattedCreatedTime}</p>
+                            ${editedHTML}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
                             <button onclick="app.viewPDFNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
-                                title="View PDF" 
+                                title="View" 
                                 style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
                                 👁️
                             </button>
-                        ` : `
-                            <button onclick="app.editNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
-                                title="Edit" 
-                                style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
-                                ✏️
+                            ${isPDF ? `
+                                <button onclick="app.showToast('PDF notes cannot be edited', 'info'); event.stopPropagation();" 
+                                    title="Edit (N/A)" 
+                                    style="background: #6c757d; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: not-allowed; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em; opacity: 0.6;">
+                                    ✏️
+                                </button>
+                            ` : `
+                                <button onclick="app.openNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                    title="Edit" 
+                                    style="background: #17a2b8; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                                    ✏️
+                                </button>
+                            `}
+                            <button onclick="app.shareNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                title="Share" 
+                                style="background: #667eea; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                                🔗
                             </button>
-                        `}
-                        <button onclick="app.deleteNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
-                            title="Delete" 
-                            style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
-                            🗑️
-                        </button>
+                            <button onclick="app.deleteNote('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" 
+                                title="Delete" 
+                                style="background: #dc3545; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">
+                                🗑️
+                            </button>
+                        </div>
                     </div>
+                </div>
+                
+                <div class="note-preview-content" style="display: none;">
+                    ${!isPDF ? `
+                        <p style="margin: 5px 0; font-size: 0.9em; color: #6c757d; font-style: italic; line-height: 1.6;">
+                            ${preview}${preview.length >= 100 ? '...' : ''}
+                        </p>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px 0; font-weight: bold; border-top: 1px solid #dee2e6; padding-top: 8px; font-size: 0.85em;">
+                            <span>📊 ${wordCount} words</span>
+                        </div>
+                    ` : '<p style="margin: 5px 0; font-size: 0.9em; color: #6c757d; font-style: italic;">Click "View" button to open PDF</p>'}
                 </div>
             `;
 
-            // Modify click behavior
-            card.onclick = (e) => {
-                if (e.target.tagName !== 'BUTTON') {
-                    if (isPDF) {
-                        this.viewPDFNote(key);
-                    } else {
-                        this.editNote(key);
-                    }
+            card.addEventListener('click', (e) => {
+                if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+                const defaultContent = card.querySelector('.bank-default-content');
+                const previewContent = card.querySelector('.note-preview-content');
+                if (defaultContent.style.display === 'none') {
+                    defaultContent.style.display = 'block';
+                    previewContent.style.display = 'none';
+                } else {
+                    defaultContent.style.display = 'none';
+                    previewContent.style.display = 'block';
                 }
-            };
+            });
 
             list.appendChild(card);
         });
 
         if (Object.keys(this.notes).length === 0) {
-            list.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">No notes yet. Create your first note above! 📓</p>';
+            list.innerHTML = '<p style="text-align: center; padding: 40px; grid-column: 1 / -1; color: #6c757d;">No notes yet. Create your first note above! 📝</p>';
         }
     }
 
-    createNewNote() {
-        // Check if "Untitled Note" already exists
-        const untitledExists = Object.values(this.notes).some(note => 
-            note.title === 'Untitled Note' && note.content === ''
-        );
-        
-        if (untitledExists) {
-            this.showToast('⚠️ An empty "Untitled Note" already exists. Please edit or delete it first.', 'warning');
-            return;
-        }
-        
-        const noteId = `note_${Date.now()}`;
-        this.currentEditingNote = noteId;
-        
-        // Don't save to this.notes yet, just store temporarily
-        this.tempNote = {
-            id: noteId,
-            title: 'Untitled Note',
-            content: '',
-            createdAt: new Date().toISOString(),
-            lastModified: new Date().toISOString()
-        };
-        this.noteHasChanges = false; // Track if user made changes
+    // ==================== NOTES SECTION ====================
 
-        document.getElementById('noteTitle').value = 'Untitled Note';
-        document.getElementById('noteContent').innerHTML = '';
-        document.getElementById('noteEditor').style.display = 'block';
+    createNote() {
+        // Find existing Untitled notes to determine the next number
+        const existingTitles = Object.values(this.notes).map(n => n.title);
+        let newTitle = "Untitled";
+        let counter = 1;
+
+        while (existingTitles.includes(newTitle)) {
+            newTitle = `Untitled-${counter}`;
+            counter++;
+        }
+
+        // Set state for a temporary session
+        this.currentEditingNote = "NEW_TEMP_NOTE"; 
+        this.noteHasChanges = true; 
+
+        // UI Setup
         document.getElementById('notesList').style.display = 'none';
+        document.getElementById('noteEditor').style.display = 'block';
+        document.getElementById('noteTitle').value = newTitle;
 
-        document.getElementById('noteEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Clear editor for the new note
+        if (this.tinymceInitialized && tinymce.get('noteContent')) {
+            tinymce.get('noteContent').setContent('');
+        } else {
+            this.initTinyMCE(); // Ensure editor loads if not ready
+        }
         
-        setTimeout(() => {
-            document.getElementById('noteTitle').focus();
-            document.getElementById('noteTitle').select();
-        }, 300);
+        // Scroll to top so user sees the editor
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    editNote(noteId) {
-        this.currentEditingNote = noteId;
-        this.noteHasChanges = false; // Reset change tracking
-        this.tempNote = null; // Clear temp note
-        const note = this.notes[noteId];
-
+    async openNote(key) {
+        this.currentEditingNote = key;
+        const note = this.notes[key];
+        
+        document.getElementById('notesList').style.display = 'none';
+        document.getElementById('noteEditor').style.display = 'block';
         document.getElementById('noteTitle').value = note.title;
-        document.getElementById('noteContent').innerHTML = note.content;
-        document.getElementById('noteEditor').style.display = 'block';
-        document.getElementById('notesList').style.display = 'none';
-
-        document.getElementById('noteEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        
+        if (!this.tinymceInitialized) {
+            await this.initTinyMCE();
+        }
+        
+        if (tinymce.get('noteContent')) {
+            tinymce.get('noteContent').setContent(note.content || '');
+        }
+        
+        this.noteHasChanges = false;
     }
 
-    saveNote() {
-        const title = document.getElementById('noteTitle').value.trim() || 'Untitled Note';
-        const content = document.getElementById('noteContent').innerHTML.trim();
-
-        // For new notes
-        if (this.tempNote) {
-            this.notes[this.tempNote.id] = {
-                title: title,
-                content: content,
-                createdAt: this.tempNote.createdAt,
-                lastModified: new Date().toISOString()
-            };
-            this.currentEditingNote = this.tempNote.id;
-            this.tempNote = null;
-        } 
-        // For existing notes
-        else if (this.currentEditingNote) {
-            this.notes[this.currentEditingNote].title = title;
-            this.notes[this.currentEditingNote].content = content;
-            this.notes[this.currentEditingNote].lastModified = new Date().toISOString();
+    async initTinyMCE() {
+        try {
+            await tinymce.init({
+                selector: '#noteContent',
+                height: 500,
+                menubar: true,
+                plugins: [
+                    'lists', 'link', 'image', 'table', 'code', 'wordcount',
+                    'searchreplace', 'fullscreen', 'insertdatetime', 'media'
+                ],
+                toolbar: 'undo redo | formatselect | bold italic underline strikethrough | ' +
+                    'alignleft aligncenter alignright alignjustify | ' +
+                    'bullist numlist outdent indent | link image table | ' +
+                    'forecolor backcolor | removeformat | code fullscreen',
+                branding: false,
+                promotion: false,
+                lists_indent_on_tab: true,
+                content_style: `
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        font-size: 14px; 
+                        color: #000000;
+                    }
+                    ul, ol { 
+                        padding-left: 30px; 
+                        margin: 10px 0;
+                    }
+                    li { 
+                        margin: 5px 0; 
+                    }
+                `,
+                setup: (editor) => {
+                    editor.on('change', () => {
+                        this.noteHasChanges = true;
+                    });
+                    editor.on('keyup', () => {
+                        this.noteHasChanges = true;
+                    });
+                }
+            });
+            
+            this.tinymceInitialized = true;
+            console.log('TinyMCE initialized successfully');
+        } catch (error) {
+            console.error('TinyMCE initialization error:', error);
+            this.showToast('⚠️ Editor failed to load', 'error');
         }
-
-        this.saveNotes();
-        this.noteHasChanges = false;
-        this.showToast('✅ Note saved successfully!', 'success');
     }
 
     closeNoteEditor() {
-        // Check if there are unsaved changes
-        const title = document.getElementById('noteTitle').value.trim();
-        const content = document.getElementById('noteContent').innerHTML.trim();
-        
-        if (this.noteHasChanges || this.tempNote) {
-            if (!confirm('Close without saving? Your work will be lost.')) {
-                return; // Don't close
-            }
-            // User confirmed, discard changes
-            this.tempNote = null;
+        if (this.noteHasChanges) {
+            const confirmClose = confirm('You have unsaved changes. Close anyway?');
+            if (!confirmClose) return;
         }
-
+        
         document.getElementById('noteEditor').style.display = 'none';
-        document.getElementById('notesList').style.display = 'grid';
+        document.getElementById('notesList').style.display = 'grid'; // Maintain your CSS grid
+        
+        if (tinymce.get('noteContent')) {
+            tinymce.get('noteContent').setContent('');
+        }
+        
         this.currentEditingNote = null;
-        this.tempNote = null;
         this.noteHasChanges = false;
-        this.updateNotesList();
-
-        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     async deleteNote(noteId) {
         if (confirm('Are you sure you want to delete this note?')) {
             delete this.notes[noteId];
-            this.saveNotes();
+            await this.saveNotes();
             this.updateNotesList();
-            this.showToast('Note deleted', 'info');
+            this.showToast('🗑️ Note deleted', 'info');
         }
     }
 
-    // Text Formatting Functions
-    formatText(command) {
-        document.execCommand(command, false, null);
-        document.getElementById('noteContent').focus();
-    }
-
-    changeFontSize(size) {
-        document.execCommand('fontSize', false, size);
-        document.getElementById('noteContent').focus();
-    }
-
-    changeFontFamily(font) {
-        if (font) {
-            document.execCommand('fontName', false, font);
-            document.getElementById('noteContent').focus();
+    async shareNote(noteId) {
+        if (!this.isLoggedIn) {
+            this.showToast('Please log in to share notes', 'warning');
+            return;
         }
-    }
-
-    changeFontSizeExact(size) {
-        if (size) {
-            const selection = window.getSelection();
-            if (selection.rangeCount > 0 && !selection.isCollapsed) {
-                // There is selected text
-                const range = selection.getRangeAt(0);
-                const span = document.createElement('span');
-                span.style.fontSize = size;
-                try {
-                    range.surroundContents(span);
-                } catch (e) {
-                    // If surroundContents fails, use alternative method
-                    const fragment = range.extractContents();
-                    span.appendChild(fragment);
-                    range.insertNode(span);
-                }
-            } else {
-                // No selection - apply to future text
-                document.execCommand('fontSize', false, '7');
-                const fontElements = document.querySelectorAll('#noteContent font[size="7"]');
-                fontElements.forEach(el => {
-                    el.removeAttribute('size');
-                    el.style.fontSize = size;
-                });
-            }
-            document.getElementById('noteContent').focus();
-            this.noteHasChanges = true;
-        }
-    }
-
-    changeTextColor(color) {
-        document.execCommand('foreColor', false, color);
-        document.getElementById('noteContent').focus();
-    }
-
-    clearFormatting() {
-        document.execCommand('removeFormat', false, null);
-        document.getElementById('noteContent').focus();
-    }
-
-    insertImage() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
         
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
+        const note = this.notes[noteId];
+        if (!note) {
+            this.showToast('Note not found', 'error');
+            return;
+        }
+        
+        this.currentShareKey = noteId;
+        const singleNoteData = {};
+        singleNoteData[noteId] = note;
+        
+        this.showLoading('Creating share link...');
+        
+        try {
+            // Use the same share mechanism as test banks, but for notes
+            const shareCode = await dbManager.createShareCode(noteId, singleNoteData, 'note');
+            const shareLink = `QM-NOTE-${shareCode}`;
             
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = document.createElement('img');
-                img.src = event.target.result;
-                img.style.maxWidth = '100%';
-                img.style.height = 'auto';
-                img.style.borderRadius = '8px';
-                img.style.margin = '10px 0';
-                
-                const selection = window.getSelection();
-                if (selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0);
-                    range.insertNode(img);
-                } else {
-                    document.getElementById('noteContent').appendChild(img);
-                }
-            };
-            reader.readAsDataURL(file);
-        };
-        
-        input.click();
-    }
-
-    indent() {
-    document.execCommand('indent', false, null);
-    document.getElementById('noteContent').focus();
-    }
-
-    outdent() {
-        document.execCommand('outdent', false, null);
-        document.getElementById('noteContent').focus();
-    }
-
-    handleNoteKeydown(event) {
-        // Tab key for indent
-        if (event.key === 'Tab' && !event.shiftKey) {
-            event.preventDefault();
-            document.execCommand('indent', false, null);
-            this.noteHasChanges = true;
-        }
-        // Shift+Tab for outdent
-        else if (event.key === 'Tab' && event.shiftKey) {
-            event.preventDefault();
-            document.execCommand('outdent', false, null);
-            this.noteHasChanges = true;
-        }
-        // Backspace for outdent when at the start of an indented line
-        else if (event.key === 'Backspace') {
-            const selection = window.getSelection();
-            if (selection.rangeCount > 0) {
-                const range = selection.getRangeAt(0);
-                // Check if cursor is at the start of the line
-                if (range.collapsed && range.startOffset === 0) {
-                    const parent = range.startContainer.parentElement;
-                    // Check if parent is indented (blockquote or has margin/padding)
-                    if (parent && (parent.tagName === 'BLOCKQUOTE' || 
-                        parent.style.marginLeft || parent.style.paddingLeft)) {
-                        event.preventDefault();
-                        document.execCommand('outdent', false, null);
-                        this.noteHasChanges = true;
-                    }
-                }
-            }
+            document.getElementById('shareCodeOutput').value = shareLink;
+            document.getElementById('shareModalTitle').textContent = `Share: ${note.title}`;
+            document.getElementById('shareModal').classList.add('active');
+            document.body.classList.add('modal-open');
+            
+            this.hideLoading();
+        } catch (error) {
+            this.hideLoading();
+            console.error('Share error:', error);
+            this.showToast('Failed to create share link', 'error');
         }
     }
 
     // Export Note Function
     async exportNote() {
-        if (!this.currentEditingNote) return;
+        if (!this.currentEditingNote) {
+            this.showToast('⚠️ No note is currently open', 'warning');
+            return;
+        }
 
         const note = this.notes[this.currentEditingNote];
         const exportFormat = prompt('Export as:\n1. PDF\n2. DOCX\n3. TXT\n4. HTML\n\nEnter number (1-4):', '1');
 
+        if (!exportFormat || !['1', '2', '3', '4'].includes(exportFormat)) {
+            return;
+        }
+
         this.showLoading('Exporting note...');
 
         try {
+            const title = note.title || 'Untitled';
+            const editor = tinymce.get('noteContent');
+            const content = editor ? editor.getContent() : note.content;
+            
+            if (!content || content.trim() === '' || content === '<p></p>') {
+                this.hideLoading();
+                this.showToast('⚠️ Note content is empty', 'warning');
+                return;
+            }
+            
             if (exportFormat === '1') {
-                // Export as PDF using jsPDF
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
-                
-                // Title
-                doc.setFontSize(18);
-                doc.setTextColor(102, 126, 234);
-                doc.text(note.title, 20, 20);
-                
-                // Content (strip HTML for basic export)
-                doc.setFontSize(11);
-                doc.setTextColor(0, 0, 0);
-                const content = note.content.replace(/<[^>]*>/g, '\n');
-                const lines = doc.splitTextToSize(content, 170);
-                doc.text(lines, 20, 35);
-                
-                doc.save(`${note.title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+                await this.exportNoteToPDF(title, content);
             } else if (exportFormat === '2') {
-                // Export as DOCX (HTML-based method)
-                const header = `<html xmlns:o='urn:schemas-microsoft-com:office:office' 
-                                xmlns:w='urn:schemas-microsoft-com:office:word' 
-                                xmlns='http://www.w3.org/TR/REC-html40'>
-                                <head><meta charset='utf-8'><title>${note.title}</title></head><body>`;
-                const footer = "</body></html>";
-                const sourceHTML = header + `<h1>${note.title}</h1>` + note.content + footer;
-                
-                const blob = new Blob(['\ufeff', sourceHTML], {
-                    type: 'application/msword'
-                });
-                
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.doc`;
-                link.click();
-                URL.revokeObjectURL(url);
+                await this.exportNoteToDOCX(title, content);
             } else if (exportFormat === '3') {
-                // Export as TXT
-                const txtContent = note.content.replace(/<[^>]*>/g, '\n');
-                const blob = new Blob([txtContent], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.txt`;
-                link.click();
-                URL.revokeObjectURL(url);
+                await this.exportNoteToTXT(title, content);
             } else if (exportFormat === '4') {
-                // Export as HTML
-                const htmlContent = `<!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>${note.title}</title>
-        <style>
-            body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
-            h1 { color: #667eea; }
-        </style>
-    </head>
-    <body>
-        <h1>${note.title}</h1>
-        ${note.content}
-    </body>
-    </html>`;
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${note.title.replace(/[^a-z0-9]/gi, '_')}.html`;
-                link.click();
-                URL.revokeObjectURL(url);
-            } else {
-                this.showToast('Invalid export format', 'warning');
+                await this.exportNoteToHTML(title, content);
             }
 
             this.hideLoading();
@@ -477,8 +432,187 @@ class QuizMasterApp {
         } catch (error) {
             this.hideLoading();
             console.error('Export error:', error);
-            this.showToast('❌ Failed to export note', 'error');
+            this.showToast('❌ Export failed: ' + error.message, 'error');
         }
+    }
+
+    async exportNoteToPDF(title, content) {
+        const tempDiv = document.createElement('div');
+        
+        // Clean HTML with no extra padding/margins
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; color: #000000; background: #ffffff;">
+                <h2 style="color: #667eea; margin: 0 0 15px 0; font-size: 20pt; border-bottom: 1px solid #eee; padding-bottom: 5px;">${title}</h2>
+                <div style="font-size: 12pt; line-height: 1.5; color: #000000;">
+                    ${content}
+                </div>
+            </div>
+        `;
+        
+        tempDiv.innerHTML = htmlContent;
+        
+        const style = document.createElement('style');
+        style.textContent = `
+            /* Reset all default margins/padding */
+            * { box-sizing: border-box; }
+            body { margin: 0; padding: 0; }
+            p { margin: 0 0 10px 0 !important; }
+            ul, ol { margin: 5px 0 !important; padding-left: 25px !important; }
+            li { margin: 2px 0 !important; }
+            h1, h2, h3, h4, h5, h6 { margin-top: 0 !important; }
+        `;
+        tempDiv.appendChild(style);
+
+        const opt = {
+            margin: [25.4, 25.4, 25.4, 25.4], // 1 inch = 25.4mm (top, right, bottom, left)
+            filename: `${title.replace(/[^a-z0-9]/gi, '_')}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { 
+                scale: 2, 
+                useCORS: true,
+                logging: false,
+                backgroundColor: '#ffffff'
+            },
+            jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' } // Changed to letter format
+        };
+
+        try {
+            await html2pdf().set(opt).from(tempDiv).save();
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            throw error;
+        }
+    }
+
+    async exportNoteToDOCX(title, content) {
+        const html = `
+    <!DOCTYPE html>
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+        <meta charset='utf-8'>
+        <title>${title}</title>
+        <!--[if gte mso 9]>
+        <xml>
+            <w:WordDocument>
+                <w:View>Print</w:View>
+                <w:Zoom>100</w:Zoom>
+            </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+            @page {
+                margin: 1in;
+            }
+            body { 
+                font-family: Arial, sans-serif; 
+                font-size: 12pt; 
+                line-height: 1.6; 
+            }
+            ul, ol {
+                margin: 10px 0;
+                padding-left: 30px;
+            }
+            li {
+                margin: 5px 0;
+            }
+            table { 
+                border-collapse: collapse; 
+                width: 100%; 
+            }
+            td, th { 
+                border: 1px solid #ddd; 
+                padding: 8px; 
+            }
+        </style>
+    </head>
+    <body>
+        <h1>${title}</h1>
+        ${content}
+    </body>
+    </html>`;
+        
+        const blob = new Blob(['\ufeff', html], {
+            type: 'application/msword'
+        });
+        
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${title.replace(/[^a-z0-9]/gi, '_')}.doc`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    async exportNoteToTXT(title, content) {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = content;
+        const txtContent = tempDiv.innerText || tempDiv.textContent;
+        
+        const blob = new Blob([txtContent], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${title.replace(/[^a-z0-9]/gi, '_')}.txt`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    
+    async exportNoteToHTML(title, content) {
+        const htmlContent = `<!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>${title}</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                padding: 40px; 
+                max-width: 800px; 
+                margin: 0 auto; 
+                line-height: 1.6; 
+            }
+            h1 { color: #667eea; }
+            ul, ol {
+                margin: 10px 0;
+                padding-left: 30px;
+            }
+            li {
+                margin: 5px 0;
+            }
+            table { 
+                border-collapse: collapse; 
+                width: 100%; 
+                margin: 20px 0; 
+            }
+            td, th { 
+                border: 1px solid #ddd; 
+                padding: 8px; 
+                text-align: left; 
+            }
+            th { 
+                background-color: #667eea; 
+                color: white; 
+            }
+            img { 
+                max-width: 100%; 
+                height: auto; 
+            }
+        </style>
+    </head>
+    <body>
+        <h1>${title}</h1>
+        ${content}
+    </body>
+    </html>`;
+        
+        const blob = new Blob([htmlContent], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${title.replace(/[^a-z0-9]/gi, '_')}.html`;
+        link.click();
+        URL.revokeObjectURL(url);
     }
 
     // Import Note File
@@ -581,16 +715,55 @@ class QuizMasterApp {
     
     viewPDFNote(noteId) {
         const note = this.notes[noteId];
-        if (!note.isPDF) return;
+        if (!note) return;
         
-        this.currentPDFData = {
-            name: note.title + '.pdf',
-            data: note.pdfData
-        };
+        if (note.isPDF) {
+            // For PDF notes, open in PDF viewer
+            this.currentPDFData = {
+                name: note.title + '.pdf',
+                data: note.pdfData
+            };
+            
+            document.getElementById('pdfFrame').src = note.pdfData;
+            document.getElementById('pdfViewerModal').classList.add('active');
+            document.body.classList.add('modal-open');
+        } else {
+            // For regular notes, show preview in modal
+            this.showNotePreviewModal(note);
+        }
+    }
+    
+    showNotePreviewModal(note) {
+        // Create a simple preview modal
+        const existingModal = document.getElementById('notePreviewModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
         
-        document.getElementById('pdfFrame').src = note.pdfData;
-        document.getElementById('pdfViewerModal').classList.add('active');
+        const modal = document.createElement('div');
+        modal.id = 'notePreviewModal';
+        modal.className = 'modal active';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 900px; max-height: 90vh; display: flex; flex-direction: column;">
+                <div class="modal-header" style="flex-shrink: 0;">
+                    <h2 style="margin: 0;">${this.escapeHtml(note.title)}</h2>
+                    <button class="modal-close-btn" onclick="app.closeNotePreviewModal()">×</button>
+                </div>
+                <div style="flex: 1; overflow-y: auto; padding: 20px; background: white; border-radius: 0 0 12px 12px;">
+                    ${note.content}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
         document.body.classList.add('modal-open');
+    }
+    
+    closeNotePreviewModal() {
+        const modal = document.getElementById('notePreviewModal');
+        if (modal) {
+            modal.remove();
+        }
+        document.body.classList.remove('modal-open');
     }
 
     closePDFViewer() {
@@ -992,7 +1165,7 @@ class QuizMasterApp {
                 avgScore = avg.toFixed(1) + '%';
             }
             
-            // Get last 4 attempts
+            // Get last 3 attempts
             const last4Attempts = bank.attempts.slice(-3).reverse();
             let attemptsHTML = '';
             if (last4Attempts.length > 0) {
@@ -1017,26 +1190,53 @@ class QuizMasterApp {
                     }
                     
                     return `
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0; font-size: 0.95em;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin: 6px 0; font-size: 0.85em;">
                             <span>${icon} Attempt ${attemptNumber} (${date}):</span>
                             <span style="font-weight: bold; color: ${color};">${attempt.score}/${bank.questions.length} (${percentage}%)</span>
                         </div>
                     `;
                 }).join('');
+                // Add # Attempts and Avg in a justified row with smaller font
+                attemptsHTML += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px 0; font-weight: bold; border-top: 1px solid #dee2e6; padding-top: 8px; font-size: 0.85em;">
+                        <span>📊 ${bank.attempts.length} Attempts</span>
+                        <span>⭐ Avg: ${avgScore}</span>
+                    </div>
+                `;
             } else {
-                attemptsHTML = '<p style="margin: 8px 0; font-size: 0.95em; color: #6c757d; font-style: italic;">No attempts yet</p>';
+                attemptsHTML = '<p style="margin: 6px 0; font-size: 0.85em; color: #6c757d; font-style: italic;">No attempts yet</p>';
+                attemptsHTML += `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin: 10px 0 6px 0; font-weight: bold; border-top: 1px solid #dee2e6; padding-top: 8px; font-size: 0.85em;">
+                        <span>📊 ${bank.attempts.length} Attempts</span>
+                        <span>⭐ Avg: ${avgScore}</span>
+                    </div>
+                `;
             }
 
+            // Format creation date
+            const createdDate = bank.createdAt ? new Date(bank.createdAt) : new Date();
+            const formattedDate = `${String(createdDate.getMonth() + 1).padStart(2, '0')}/${String(createdDate.getDate()).padStart(2, '0')}/${createdDate.getFullYear()}`;
+            const formattedTime = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}:${String(createdDate.getSeconds()).padStart(2, '0')}`;
+            
+            // Format edited date if exists
+            let editedHTML = '';
+            if (bank.editedAt) {
+                const editedDate = new Date(bank.editedAt);
+                const editedFormattedDate = `${String(editedDate.getMonth() + 1).padStart(2, '0')}/${String(editedDate.getDate()).padStart(2, '0')}/${editedDate.getFullYear()}`;
+                const editedFormattedTime = `${String(editedDate.getHours()).padStart(2, '0')}:${String(editedDate.getMinutes()).padStart(2, '0')}:${String(editedDate.getSeconds()).padStart(2, '0')}`;
+                editedHTML = `<p style="margin: 3px 0; font-size: 0.8em; color: #6c757d; font-style: italic;">Edited: ${editedFormattedDate} | ${editedFormattedTime}</p>`;
+            }
+            
             card.innerHTML = `
                 <h3 style="margin-bottom: 15px;">${bank.title}</h3>
                 
                 <!-- Default Content (shown initially) -->
                 <div class="bank-default-content">
                     <div style="display: flex; justify-content: space-between; align-items: start; gap: 15px;">
-                        <div style="flex: 1;">
+                        <div class="bank-info-section" style="flex: 1;">
                             <p style="margin: 3px 0;">📝 ${bank.questions.length} questions</p>
-                            <p style="margin: 3px 0;">📊 ${bank.attempts.length} attempts</p>
-                            <p style="margin: 3px 0;">⭐ Avg: ${avgScore}</p>
+                            <p style="margin: 3px 0; font-size: 0.8em; color: #6c757d; font-style: italic;">Created: ${formattedDate} | ${formattedTime}</p>
+                            ${editedHTML}
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex-shrink: 0;">
                             <button onclick="app.viewBank('${key.replace(/'/g, "\\'")}'); event.stopPropagation();" title="View" style="background: #28a745; border: none; color: white; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.3s; font-size: 1.1em;">👁️</button>
@@ -1078,7 +1278,7 @@ class QuizMasterApp {
         });
 
         if (Object.keys(this.testBanks).length === 0) {
-            list.innerHTML = '<p style="text-align: center; padding: 40px; color: #6c757d;">No test banks yet. Create your first one above!</p>';
+            list.innerHTML = '<p style="text-align: center; padding: 40px; grid-column: 1 / -1; color: #6c757d;">No test banks yet. Create your first one above!</p>';
         }
     }
 
@@ -1241,9 +1441,9 @@ class QuizMasterApp {
             questionDiv.className = 'edit-question-item';
             questionDiv.style.cssText = 'background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #667eea;';
             questionDiv.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <strong style="font-size: 1em;">Q${index + 1}:</strong>
-                    <textarea style="width: 100%; margin-top: 5px; padding: 8px; resize: none; font-family: inherit; font-size: 1em;" id="q-text-${index}">${q.question}</textarea>
+                <div style="margin-bottom: 10px; display: flex; align-items: start; gap: 8px;">
+                    <strong style="font-size: 1em; flex-shrink: 0; padding-top: 8px;">Q${index + 1}:</strong>
+                    <textarea style="flex: 1; padding: 8px; resize: none; font-family: inherit; font-size: 1em;" id="q-text-${index}">${q.question}</textarea>
                 </div>
                 <div style="margin-top: 10px;">
                     ${q.isMultipleChoice ? '<span style="color: #667eea; font-size: 0.85em; margin-bottom: 5px; display: block;">(Multiple Answers)</span>' : ''}
@@ -1262,10 +1462,10 @@ class QuizMasterApp {
                         `;
                     }).join('')}
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px;">
-                    <button class="btn btn-danger" onclick="app.deleteQuestion(${index})" 
+                <div class="edit-question-buttons-container" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; gap: 10px;">
+                    <button class="btn btn-danger edit-question-delete-btn" onclick="app.deleteQuestion(${index})" 
                             style="padding: 6px 12px; min-width: auto; font-size: 0.9em;">
-                        🗑️ Delete Question
+                        🗑️<span class="desktop-delete-text"> Delete Question</span><span class="mobile-delete-icon" style="display: none;"></span>
                     </button>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn ${q.isMultipleChoice ? 'btn-primary' : 'btn-secondary'}" 
@@ -1326,8 +1526,16 @@ class QuizMasterApp {
             }
         }
         
-        // Re-render the question
-        this.renderEditQuestions();
+        // Preserve search filter
+        const searchInput = document.getElementById('editSearchInput');
+        const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        
+        // Re-render while preserving filter
+        if (searchTerm) {
+            this.filterEditQuestions();
+        } else {
+            this.renderEditQuestions();
+        }
         this.updateSaveButton();
     }
 
@@ -1483,6 +1691,7 @@ class QuizMasterApp {
                         }
                     });
                     questions.forEach(q => existingQuestions.push(q));
+                    this.testBanks[this.currentEditingBank].editedAt = new Date().toISOString();
                     this.saveData();
                     document.getElementById('editQuestionsInput').value = '';
                     this.renderEditQuestions();
@@ -1490,6 +1699,7 @@ class QuizMasterApp {
                 } else {
                     // Add only new questions
                     newQuestions.forEach(q => existingQuestions.push(q));
+                    this.testBanks[this.currentEditingBank].editedAt = new Date().toISOString();
                     this.saveData();
                     document.getElementById('editQuestionsInput').value = '';
                     this.renderEditQuestions();
@@ -1497,6 +1707,7 @@ class QuizMasterApp {
                 }
             } else {
                 questions.forEach(q => existingQuestions.push(q));
+                this.testBanks[this.currentEditingBank].editedAt = new Date().toISOString();
                 this.saveData();
                 document.getElementById('editQuestionsInput').value = '';
                 this.renderEditQuestions();
@@ -1510,6 +1721,7 @@ class QuizMasterApp {
         const confirmed = confirm('Are you sure you want to delete this question?');
         if (confirmed) {
             this.testBanks[this.currentEditingBank].questions.splice(index, 1);
+            this.testBanks[this.currentEditingBank].editedAt = new Date().toISOString();
             this.saveData();
             this.renderEditQuestions();
             this.updateTestBankList();
@@ -1621,6 +1833,9 @@ class QuizMasterApp {
             delete this.testBanks[oldName];
         }
         
+        // Set edited timestamp
+        bank.editedAt = new Date().toISOString();
+        
         this.saveData();
         this.updateTestBankList();
         this.updateSelectOptions();
@@ -1630,6 +1845,16 @@ class QuizMasterApp {
     }
 
     closeEditModal() {
+        // Check if there are unsaved changes
+        const saveBtn = document.querySelector('#editModal .btn-success');
+        if (saveBtn && !saveBtn.disabled) {
+            // There are unsaved changes
+            const confirmClose = confirm('There are unsaved changes. Are you sure you want to cancel without saving?');
+            if (!confirmClose) {
+                return; // Don't close the modal
+            }
+        }
+        
         document.getElementById('editModal').classList.remove('active');
         document.body.classList.remove('modal-open');
         this.currentEditingBank = null;
@@ -1885,19 +2110,38 @@ class QuizMasterApp {
         const key = this.currentShareKey;
         if (!key) return;
         
-        const singleBankData = {};
-        singleBankData[key] = this.testBanks[key];
-        
-        const dataStr = JSON.stringify(singleBankData, null, 2);
-        const dataBlob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(dataBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${key.replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        URL.revokeObjectURL(url);
-        
-        this.showToast('✅ Test bank exported!', 'success');
+        // Check if it's a note or test bank
+        if (this.notes[key]) {
+            // Export note as JSON
+            const singleNoteData = {};
+            singleNoteData[key] = this.notes[key];
+            
+            const dataStr = JSON.stringify(singleNoteData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${this.notes[key].title.replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            this.showToast('✅ Note exported!', 'success');
+        } else if (this.testBanks[key]) {
+            // Export test bank as JSON
+            const singleBankData = {};
+            singleBankData[key] = this.testBanks[key];
+            
+            const dataStr = JSON.stringify(singleBankData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${key.replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+            
+            this.showToast('✅ Test bank exported!', 'success');
+        }
     }
 
     async exportSingleBankPDF() {
@@ -1907,95 +2151,144 @@ class QuizMasterApp {
         this.showLoading('Generating PDF...');
         
         try {
-            const bank = this.testBanks[key];
-            
-            // Using jsPDF library
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            let yPos = 20;
-            const pageHeight = doc.internal.pageSize.height;
-            const margin = 20;
-            const maxWidth = 170;
-            
-            // Title
-            doc.setFontSize(20);
-            doc.setTextColor(102, 126, 234);
-            doc.text(bank.title, margin, yPos);
-            yPos += 10;
-            
-            // Metadata
-            doc.setFontSize(10);
-            doc.setTextColor(108, 117, 125);
-            doc.text(`Total Questions: ${bank.questions.length}`, margin, yPos);
-            yPos += 6;
-            doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPos);
-            yPos += 10;
-            
-            // Line separator
-            doc.setDrawColor(102, 126, 234);
-            doc.setLineWidth(0.5);
-            doc.line(margin, yPos, 190, yPos);
-            yPos += 10;
-            
-            // Questions
-            bank.questions.forEach((q, index) => {
-                // Check if we need a new page
-                if (yPos > pageHeight - 60) {
-                    doc.addPage();
-                    yPos = 20;
-                }
+            // Check if it's a note
+            if (this.notes[key]) {
+                const note = this.notes[key];
                 
-                // Question number and text
-                doc.setFontSize(11);
-                doc.setTextColor(0, 0, 0);
-                doc.setFont(undefined, 'bold');
-                const questionLines = doc.splitTextToSize(`Q${index + 1}: ${q.question}`, maxWidth);
-                doc.text(questionLines, margin, yPos);
-                yPos += questionLines.length * 6 + 4;
+                // Export note as PDF using html2pdf (same as exportNoteToPDF)
+                const tempDiv = document.createElement('div');
                 
-                // Options
-                doc.setFont(undefined, 'normal');
+                const htmlContent = `
+                    <div style="font-family: Arial, sans-serif; color: #000000; background: #ffffff;">
+                        <h2 style="color: #667eea; margin: 0 0 15px 0; font-size: 20pt; border-bottom: 1px solid #eee; padding-bottom: 5px;">${note.title}</h2>
+                        <div style="font-size: 12pt; line-height: 1.5; color: #000000;">
+                            ${note.content}
+                        </div>
+                    </div>
+                `;
+                
+                tempDiv.innerHTML = htmlContent;
+                
+                const style = document.createElement('style');
+                style.textContent = `
+                    * { box-sizing: border-box; }
+                    body { margin: 0; padding: 0; }
+                    p { margin: 0 0 10px 0 !important; }
+                    ul, ol { margin: 5px 0 !important; padding-left: 25px !important; }
+                    li { margin: 2px 0 !important; }
+                    h1, h2, h3, h4, h5, h6 { margin-top: 0 !important; }
+                `;
+                tempDiv.appendChild(style);
+
+                const opt = {
+                    margin: [25.4, 25.4, 25.4, 25.4],
+                    filename: `${note.title.replace(/[^a-z0-9]/gi, '_')}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { 
+                        scale: 2, 
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff'
+                    },
+                    jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }
+                };
+
+                await html2pdf().set(opt).from(tempDiv).save();
+                
+                this.hideLoading();
+                this.showToast('✅ Note PDF exported!', 'success');
+                
+            } else if (this.testBanks[key]) {
+                // Export test bank as PDF using jsPDF
+                const bank = this.testBanks[key];
+                
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                let yPos = 20;
+                const pageHeight = doc.internal.pageSize.height;
+                const margin = 20;
+                const maxWidth = 170;
+                
+                // Title
+                doc.setFontSize(20);
+                doc.setTextColor(102, 126, 234);
+                doc.text(bank.title, margin, yPos);
+                yPos += 10;
+                
+                // Metadata
                 doc.setFontSize(10);
-                q.options.forEach((opt, i) => {
-                    const letter = String.fromCharCode(65 + i);
-                    const isCorrect = letter === q.correct;
-                    
-                    if (isCorrect) {
-                        doc.setTextColor(40, 167, 69); // Green for correct
-                        doc.setFont(undefined, 'bold');
-                    } else {
-                        doc.setTextColor(0, 0, 0);
-                        doc.setFont(undefined, 'normal');
+                doc.setTextColor(108, 117, 125);
+                doc.text(`Total Questions: ${bank.questions.length}`, margin, yPos);
+                yPos += 6;
+                doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPos);
+                yPos += 10;
+                
+                // Line separator
+                doc.setDrawColor(102, 126, 234);
+                doc.setLineWidth(0.5);
+                doc.line(margin, yPos, 190, yPos);
+                yPos += 10;
+                
+                // Questions
+                bank.questions.forEach((q, index) => {
+                    // Check if we need a new page
+                    if (yPos > pageHeight - 60) {
+                        doc.addPage();
+                        yPos = 20;
                     }
                     
-                    const optionLines = doc.splitTextToSize(`${letter}. ${opt}`, maxWidth - 5);
-                    doc.text(optionLines, margin + 5, yPos);
-                    yPos += optionLines.length * 5 + 2;
+                    // Question number and text
+                    doc.setFontSize(11);
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont(undefined, 'bold');
+                    const questionLines = doc.splitTextToSize(`Q${index + 1}: ${q.question}`, maxWidth);
+                    doc.text(questionLines, margin, yPos);
+                    yPos += questionLines.length * 6 + 4;
+                    
+                    // Options
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(10);
+                    q.options.forEach((opt, i) => {
+                        const letter = String.fromCharCode(65 + i);
+                        const isCorrect = letter === q.correct;
+                        
+                        if (isCorrect) {
+                            doc.setTextColor(40, 167, 69); // Green for correct
+                            doc.setFont(undefined, 'bold');
+                        } else {
+                            doc.setTextColor(0, 0, 0);
+                            doc.setFont(undefined, 'normal');
+                        }
+                        
+                        const optionLines = doc.splitTextToSize(`${letter}. ${opt}`, maxWidth - 5);
+                        doc.text(optionLines, margin + 5, yPos);
+                        yPos += optionLines.length * 5 + 2;
+                    });
+                    
+                    yPos += 8; // Space between questions
                 });
                 
-                yPos += 8; // Space between questions
-            });
-            
-            // Footer on last page
-            const totalPages = doc.internal.getNumberOfPages();
-            for (let i = 1; i <= totalPages; i++) {
-                doc.setPage(i);
-                doc.setFontSize(8);
-                doc.setTextColor(150);
-                doc.text(`Page ${i} of ${totalPages}`, 105, pageHeight - 10, { align: 'center' });
-                doc.text('Generated by QuizMaster', 105, pageHeight - 5, { align: 'center' });
+                // Footer on last page
+                const totalPages = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text(`Page ${i} of ${totalPages}`, 105, pageHeight - 10, { align: 'center' });
+                    doc.text('Generated by QuizMaster', 105, pageHeight - 5, { align: 'center' });
+                }
+                
+                // Save PDF
+                doc.save(`${key.replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().split('T')[0]}.pdf`);
+                
+                this.hideLoading();
+                this.showToast('✅ PDF exported successfully!', 'success');
             }
-            
-            // Save PDF
-            doc.save(`${key.replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().split('T')[0]}.pdf`);
-            
-            this.hideLoading();
-            this.showToast('✅ PDF exported successfully!', 'success');
         } catch (error) {
             this.hideLoading();
             console.error('PDF export error:', error);
-            this.showToast('❌ Failed to generate PDF. Make sure jsPDF is loaded.', 'error');
+            this.showToast('❌ Failed to generate PDF.', 'error');
         }
     }
 
@@ -2033,7 +2326,7 @@ class QuizMasterApp {
         this.showLoading('Importing...');
 
         try {
-            const result = await dbManager.importFromShareCode(code);
+            const result = await dbManager.importFromShareCode(code, 'testbank');
             const bankKey = result.bankKey;
             const bankData = result.bankData[bankKey];
             
@@ -2052,6 +2345,58 @@ class QuizMasterApp {
             
             this.hideLoading();
             this.showToast('✅ Successfully imported test bank!', 'success');
+        } catch (error) {
+            this.hideLoading();
+            this.showToast(error.message, 'error');
+        }
+    }
+
+    // Import Note Functions
+    showImportNoteModal() {
+        document.getElementById('importNoteModal').classList.add('active');
+        document.body.classList.add('modal-open');
+        document.getElementById('importNoteCodeInput').value = '';
+    }
+
+    closeImportNoteModal() {
+        document.getElementById('importNoteModal').classList.remove('active');
+        document.body.classList.remove('modal-open');
+    }
+
+    async importNoteFromCode() {
+        const code = document.getElementById('importNoteCodeInput').value.trim();
+        
+        if (!code) {
+            this.showToast('Please paste a note share link first!', 'warning');
+            return;
+        }
+        
+        if (!this.isLoggedIn) {
+            this.showToast('Please log in to import notes', 'warning');
+            return;
+        }
+
+        this.showLoading('Importing note...');
+
+        try {
+            const result = await dbManager.importFromShareCode(code, 'note');
+            const noteKey = result.bankKey;
+            const noteData = result.bankData[noteKey];
+            
+            if (this.notes[noteKey]) {
+                if (confirm(`Note "${noteData.title}" already exists. Overwrite?`)) {
+                    this.notes[noteKey] = noteData;
+                }
+            } else {
+                this.notes[noteKey] = noteData;
+            }
+
+            await this.saveNotes();
+            this.updateNotesList();
+            this.closeImportNoteModal();
+            
+            this.hideLoading();
+            this.showToast('✅ Successfully imported note!', 'success');
         } catch (error) {
             this.hideLoading();
             this.showToast(error.message, 'error');
@@ -2116,6 +2461,9 @@ class QuizMasterApp {
             questionCountSelect.appendChild(customOption);
             
             settings.style.display = 'block';
+            
+            // Load saved quizzes for this bank
+            this.loadSavedQuizzesDropdown();
         } else {
             settings.style.display = 'none';
         }
@@ -2160,7 +2508,14 @@ class QuizMasterApp {
 
         // Shuffle and slice questions
         this.currentQuestions = this.shuffleArray([...this.currentBank.questions]).slice(0, questionCount);
-        
+
+        // Check if shuffle answers is enabled
+        const shuffleAnswers = document.getElementById('shuffleAnswers').checked;
+        if (shuffleAnswers) {
+            // Shuffle answers for each question
+            this.currentQuestions = this.currentQuestions.map(q => this.shuffleQuestionAnswers(q));
+        }
+
         this.quizState = {
             currentIndex: 0,
             answers: [],
@@ -2194,10 +2549,46 @@ class QuizMasterApp {
         return shuffled;
     }
 
+    shuffleQuestionAnswers(question) {
+        // Create a deep copy of the question to avoid modifying the original
+        const shuffledQuestion = JSON.parse(JSON.stringify(question));
+        
+        // Create an array of indices
+        const indices = Array.from({ length: shuffledQuestion.options.length }, (_, i) => i);
+        
+        // Shuffle the indices
+        const shuffledIndices = this.shuffleArray(indices);
+        
+        // Create new options array based on shuffled indices
+        const newOptions = shuffledIndices.map(oldIndex => shuffledQuestion.options[oldIndex]);
+        
+        // Create a mapping from old letters to new letters
+        const letterMapping = {};
+        shuffledIndices.forEach((oldIndex, newIndex) => {
+            const oldLetter = String.fromCharCode(65 + oldIndex); // A, B, C, D
+            const newLetter = String.fromCharCode(65 + newIndex);
+            letterMapping[oldLetter] = newLetter;
+        });
+        
+        // Update the correct answer(s) based on the new positions
+        if (Array.isArray(shuffledQuestion.correct)) {
+            // Multiple correct answers
+            shuffledQuestion.correct = shuffledQuestion.correct.map(letter => letterMapping[letter]);
+        } else {
+            // Single correct answer
+            shuffledQuestion.correct = letterMapping[shuffledQuestion.correct];
+        }
+        
+        // Update the options
+        shuffledQuestion.options = newOptions;
+        
+        return shuffledQuestion;
+    }
+
     startTimer() {
         const timerDiv = document.createElement('div');
         timerDiv.id = 'quizTimer';
-        timerDiv.className = 'timer';
+        timerDiv.style.display = 'none'; // Hidden, we'll use inline timer
         document.body.appendChild(timerDiv);
 
         this.quizState.timerInterval = setInterval(() => {
@@ -2218,10 +2609,20 @@ class QuizMasterApp {
 
             const mins = Math.floor(remaining / 60000);
             const secs = Math.floor((remaining % 60000) / 1000);
-            timerDiv.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-
-            if (remaining < 60000) {
-                timerDiv.classList.add('warning');
+            const timeText = `⏱️ ${mins}:${secs.toString().padStart(2, '0')}`;
+            
+            // Update hidden timer (for reference)
+            timerDiv.textContent = timeText;
+            
+            // Update inline timer if it exists
+            const inlineTimer = document.getElementById('quizTimerInline');
+            if (inlineTimer) {
+                inlineTimer.textContent = timeText;
+                if (remaining < 60000) {
+                    inlineTimer.classList.add('warning');
+                } else {
+                    inlineTimer.classList.remove('warning');
+                }
             }
         }, 1000);
     }
@@ -2231,25 +2632,37 @@ class QuizMasterApp {
         const q = this.currentQuestions[this.quizState.currentIndex];
 
         const progress = ((this.quizState.currentIndex + 1) / this.currentQuestions.length) * 100;
+        
+        // Check if timer is enabled
+        const showSaveButton = !this.quizState.timeLimit;
+        
+        // Get timer display if exists
+        const timerElement = document.getElementById('quizTimer');
+        const timerHTML = timerElement ? `<div id="quizTimerInline" class="quiz-timer-inline">${timerElement.textContent}</div>` : '';
 
         container.innerHTML = `
             <div class="progress-bar">
                 <div class="progress-fill" style="width: ${progress}%"></div>
             </div>
-            <div style="text-align: right; margin-bottom: 10px;">
+            <div class="quiz-action-buttons" style="text-align: right; margin-bottom: 10px; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                ${showSaveButton ? '<button class="btn btn-success" onclick="app.saveQuizProgress()" style="min-width: auto; padding: 8px 16px;">💾 Save Quiz</button>' : ''}
                 <button class="btn btn-danger" onclick="app.exitQuiz()" style="min-width: auto; padding: 8px 16px;">❌ Exit Test</button>
             </div>
             <div class="quiz-question">
-                <h3>Question ${this.quizState.currentIndex + 1} of ${this.currentQuestions.length}</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap;">
+                    <h3 style="margin: 0;">Question ${this.quizState.currentIndex + 1} of ${this.currentQuestions.length}</h3>
+                    ${timerHTML}
+                </div>
                 <p style="font-size: 1.2em; margin: 20px 0;">${q.question}</p>
                 <div class="quiz-options">
                     ${q.isMultipleChoice ? 
-                        `<p style="color: #667eea; font-weight: bold; margin-bottom: 10px;">⚠️ Multiple correct answers - Select ${Array.isArray(q.correct) ? q.correct.length : 1} answer(s)</p>` : ''}
+                        `<p style="color: #667eea; font-weight: bold; margin-bottom: 10px;">⚠️ Multiple correct answers</p>` : ''}
                     ${q.options.map((opt, i) => {
                         const letter = String.fromCharCode(65 + i);
+                        const inputType = q.isMultipleChoice ? 'checkbox' : 'radio';
                         return `
-                            <div class="quiz-option" onclick="app.selectAnswer('${letter}', this, ${q.isMultipleChoice})" data-answer="${letter}">
-                                <input type="radio" name="answer" value="${letter}" id="opt${i}" style="display: none;">
+                            <div class="quiz-option" onclick="app.selectAnswer('${letter}', this, ${q.isMultipleChoice}, event)" data-answer="${letter}">
+                                <input type="${inputType}" name="answer" value="${letter}" id="opt${i}" style="display: none;">
                                 <label for="opt${i}">${letter}. ${opt}</label>
                             </div>
                         `;
@@ -2266,6 +2679,7 @@ class QuizMasterApp {
         if (confirm('Are you sure you want to exit the exam? Your progress will not be saved.')) {
             this.quizState.isActive = false;
             this.examLocked = false;
+            this.removeTabHighlight(); // Remove red glow
             
             // Re-enable test bank selector
             const selectBank = document.getElementById('selectBank');
@@ -2280,32 +2694,360 @@ class QuizMasterApp {
             }
             const timer = document.getElementById('quizTimer');
             if (timer) timer.remove();
-            location.reload();
+            
+            // Switch to Quiz tab instead of reloading
+            document.getElementById('quizContainer').innerHTML = '';
+            this.switchTab('take');
         }
     }
 
-    selectAnswer(answer, element, isMultipleChoice) {
+    async saveQuizProgress() {
+        const confirmSave = confirm('Do you want to save this quiz and continue later?\n\nClick OK to save and exit, or Cancel to continue the quiz.');
+        
+        if (!confirmSave) {
+            return; // User chose to continue the quiz
+        }
+
+        // Save the quiz
+        try {
+            this.showLoading('Saving quiz progress...');
+            
+            const selectedBank = document.getElementById('selectBank').value;
+            
+            if (!selectedBank) {
+                throw new Error('No test bank selected');
+            }
+            
+            console.log('Saving quiz for bank:', selectedBank);
+            console.log('Quiz state:', this.quizState);
+            console.log('Current questions length:', this.currentQuestions?.length);
+            
+            const quizData = {
+                currentIndex: this.quizState.currentIndex,
+                answers: this.quizState.answers,
+                startTime: this.quizState.startTime,
+                immediateMode: this.quizState.immediateMode,
+                totalQuestions: this.currentQuestions.length
+            };
+
+            console.log('Quiz data to save:', quizData);
+
+            if (this.isLoggedIn) {
+                console.log('Saving quiz for logged-in user');
+                console.log('User ID:', dbManager.userId);
+                
+                // Check if dbManager has userId set
+                if (!dbManager.userId) {
+                    console.error('dbManager.userId is not set!');
+                    // Try to set it from auth
+                    const currentUser = auth.currentUser;
+                    if (currentUser) {
+                        dbManager.setUser(currentUser.uid);
+                        console.log('Set userId from auth:', currentUser.uid);
+                    } else {
+                        throw new Error('No authenticated user found');
+                    }
+                }
+                
+                await dbManager.saveQuizProgress(selectedBank, quizData);
+                console.log('Quiz saved successfully to Firebase');
+            } else {
+                console.log('Saving quiz for guest user');
+                // Save to localStorage for guests
+                const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+                savedQuizzes[selectedBank] = {
+                    ...quizData,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem('savedQuizzes', JSON.stringify(savedQuizzes));
+                console.log('Quiz saved to localStorage');
+            }
+
+            this.hideLoading();
+            this.showToast('✅ Attempt Saved Successfully!', 'success');
+            
+            // Clean up and return to quiz tab
+            this.quizState.isActive = false;
+            this.examLocked = false;
+            
+            const selectBank = document.getElementById('selectBank');
+            if (selectBank) {
+                selectBank.disabled = false;
+                selectBank.style.opacity = '1';
+                selectBank.style.cursor = 'pointer';
+            }
+            
+            if (this.quizState.timerInterval) {
+                clearInterval(this.quizState.timerInterval);
+            }
+            const timer = document.getElementById('quizTimer');
+            if (timer) timer.remove();
+            
+            // Delay reload to let user see success message
+            setTimeout(() => {
+                location.reload();
+            }, 1500); // 1.5 second delay
+        } catch (error) {
+            this.hideLoading();
+            console.error('Save quiz error:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            this.showToast(`❌ Failed to save quiz progress: ${error.message}`, 'error');
+        }
+    }
+
+    async continueQuiz() {
+        const selectedBank = document.getElementById('selectBank').value;
+        if (!selectedBank) {
+            this.showToast('Please select a test bank', 'warning');
+            return;
+        }
+
+        try {
+            this.showLoading('Loading saved quiz...');
+            
+            console.log('Attempting to load saved quiz for bank:', selectedBank);
+            console.log('User logged in:', this.isLoggedIn);
+            console.log('dbManager userId:', dbManager.userId);
+            
+            let savedQuiz = null;
+            if (this.isLoggedIn) {
+                console.log('Loading from Firebase...');
+                
+                // Check if dbManager has userId set
+                if (!dbManager.userId) {
+                    console.error('dbManager.userId is not set!');
+                    const currentUser = auth.currentUser;
+                    if (currentUser) {
+                        dbManager.setUser(currentUser.uid);
+                        console.log('Set userId from auth:', currentUser.uid);
+                    } else {
+                        throw new Error('No authenticated user found');
+                    }
+                }
+                
+                savedQuiz = await dbManager.loadQuizProgress(selectedBank);
+                console.log('Loaded savedQuiz from Firebase:', savedQuiz);
+            } else {
+                console.log('Loading from localStorage...');
+                const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+                savedQuiz = savedQuizzes[selectedBank];
+                console.log('Loaded savedQuiz from localStorage:', savedQuiz);
+            }
+
+            if (!savedQuiz) {
+                this.hideLoading();
+                console.error('No saved quiz found for bank:', selectedBank);
+                this.showToast('No saved quiz found', 'warning');
+                return;
+            }
+
+            // Load the test bank questions
+            const bank = this.testBanks[selectedBank];
+            if (!bank) {
+                this.hideLoading();
+                console.error('Test bank not found:', selectedBank);
+                this.showToast('Test bank not found', 'error');
+                return;
+            }
+            
+            console.log('Test bank loaded:', bank.title);
+            this.currentBank = bank;  // FIX: Set to bank object, not string
+            this.currentQuestions = bank.questions;
+
+            // Restore quiz state
+            this.quizState = {
+                currentIndex: savedQuiz.currentIndex,
+                answers: savedQuiz.answers,
+                startTime: savedQuiz.startTime,
+                timeLimit: null, // Saved quizzes don't have timers
+                timerInterval: null,
+                immediateMode: savedQuiz.immediateMode,
+                isActive: true
+            };
+
+            console.log('Quiz state restored:', this.quizState);
+
+            this.examLocked = true;
+            
+            // Disable test bank selector during exam
+            const selectBankElem = document.getElementById('selectBank');
+            if (selectBankElem) {
+                selectBankElem.disabled = true;
+                selectBankElem.style.opacity = '0.5';
+                selectBankElem.style.cursor = 'not-allowed';
+            }
+
+            document.getElementById('quizSettings').style.display = 'none';
+            document.getElementById('quizContainer').style.display = 'block';
+            
+            this.showQuestion();
+            this.hideLoading();
+            this.showToast('✅ Quiz resumed!', 'success');
+            console.log('Quiz resumed successfully');
+        } catch (error) {
+            this.hideLoading();
+            console.error('Continue quiz error:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            this.showToast(`❌ Failed to load saved quiz: ${error.message}`, 'error');
+        }
+    }
+
+    async loadSavedQuizzesDropdown() {
+        const selectedBank = document.getElementById('selectBank').value;
+        if (!selectedBank) return;
+
+        try {
+            let savedQuiz = null;
+            if (this.isLoggedIn) {
+                savedQuiz = await dbManager.loadQuizProgress(selectedBank);
+            } else {
+                const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+                savedQuiz = savedQuizzes[selectedBank];
+            }
+
+            const savedQuizzesSection = document.getElementById('savedQuizzesSection');
+            const dropdown = document.getElementById('savedQuizzesDropdown');
+            const infoText = document.getElementById('savedQuizInfo');
+            const continueBtn = document.getElementById('continueQuizBtn');
+            const deleteBtn = document.getElementById('deleteQuizBtn');
+
+            if (savedQuiz) {
+                savedQuizzesSection.style.display = 'block';
+                
+                // Convert savedAt timestamp
+                let savedAtDate;
+                if (savedQuiz.savedAt) {
+                    if (savedQuiz.savedAt.toDate) {
+                        // Firestore Timestamp
+                        savedAtDate = savedQuiz.savedAt.toDate();
+                    } else {
+                        // ISO string from localStorage
+                        savedAtDate = new Date(savedQuiz.savedAt);
+                    }
+                } else {
+                    savedAtDate = new Date();
+                }
+
+                const formattedDate = savedAtDate.toLocaleDateString();
+                const formattedTime = savedAtDate.toLocaleTimeString();
+                
+                dropdown.innerHTML = `
+                    <option value="saved">Question ${savedQuiz.currentIndex + 1} of ${savedQuiz.totalQuestions} - Saved on ${formattedDate} at ${formattedTime}</option>
+                `;
+                
+                infoText.textContent = `You have a saved quiz at question ${savedQuiz.currentIndex + 1}. Click "Continue Quiz" to resume.`;
+                continueBtn.style.display = 'block';
+                if (deleteBtn) deleteBtn.style.display = 'block';
+            } else {
+                savedQuizzesSection.style.display = 'none';
+                continueBtn.style.display = 'none';
+                if (deleteBtn) deleteBtn.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Load saved quizzes error:', error);
+        }
+    }
+
+    onSavedQuizSelect() {
+        // This function is called when user selects from the dropdown
+        const dropdown = document.getElementById('savedQuizzesDropdown');
+        const continueBtn = document.getElementById('continueQuizBtn');
+        const deleteBtn = document.getElementById('deleteQuizBtn');
+        
+        if (dropdown.value === 'saved') {
+            continueBtn.style.display = 'block';
+            if (deleteBtn) deleteBtn.style.display = 'block';
+        } else {
+            continueBtn.style.display = 'none';
+            if (deleteBtn) deleteBtn.style.display = 'none';
+        }
+    }
+
+    async deleteSavedQuiz() {
+        const selectedBank = document.getElementById('selectBank').value;
+        if (!selectedBank) {
+            this.showToast('Please select a test bank', 'warning');
+            return;
+        }
+
+        const confirmDelete = confirm('Are you sure you want to delete this saved quiz? This cannot be undone.');
+        if (!confirmDelete) {
+            return;
+        }
+
+        try {
+            this.showLoading('Deleting saved quiz...');
+
+            if (this.isLoggedIn) {
+                await dbManager.deleteQuizProgress(selectedBank);
+            } else {
+                // Delete from localStorage for guests
+                const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+                delete savedQuizzes[selectedBank];
+                localStorage.setItem('savedQuizzes', JSON.stringify(savedQuizzes));
+            }
+
+            this.hideLoading();
+            this.showToast('✅ Saved quiz deleted!', 'success');
+
+            // Refresh the saved quizzes dropdown
+            await this.loadSavedQuizzesDropdown();
+        } catch (error) {
+            this.hideLoading();
+            console.error('Delete saved quiz error:', error);
+            this.showToast(`❌ Failed to delete saved quiz: ${error.message}`, 'error');
+        }
+    }
+
+    selectAnswer(answer, element, isMultipleChoice, event) {
+        // Prevent any default behavior
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        
         if (isMultipleChoice) {
-            // Allow multiple selections
+            // Multiple choice - use checkboxes
+            const wasSelected = element.classList.contains('selected');
+            
+            // Toggle visual selection
             element.classList.toggle('selected');
             
+            // Get the checkbox input and set its state explicitly
+            const checkboxInput = element.querySelector('input[type="checkbox"]');
+            if (checkboxInput) {
+                checkboxInput.checked = !wasSelected; // Set to opposite of previous state
+            }
+            
+            // Update temp storage for validation
             if (!this.tempMultipleAnswers) {
                 this.tempMultipleAnswers = [];
             }
             
-            if (element.classList.contains('selected')) {
+            if (!wasSelected) {
+                // Was not selected, now is selected - add answer
                 if (!this.tempMultipleAnswers.includes(answer)) {
                     this.tempMultipleAnswers.push(answer);
                 }
             } else {
+                // Was selected, now is not - remove answer
                 this.tempMultipleAnswers = this.tempMultipleAnswers.filter(a => a !== answer);
             }
         } else {
-            // Single answer - clear others
+            // Single answer - use radio buttons
+            // Clear all other options
             document.querySelectorAll('.quiz-option').forEach(opt => {
                 opt.classList.remove('selected');
             });
             element.classList.add('selected');
+            
+            // Check this radio input
+            const radioInput = element.querySelector('input[type="radio"]');
+            if (radioInput) {
+                radioInput.checked = true;
+            }
         }
     }
 
@@ -2314,15 +3056,35 @@ class QuizMasterApp {
         let answer = null;
         
         if (q.isMultipleChoice) {
-            // Get selected answers from our temp storage
-            answer = this.tempMultipleAnswers ? [...this.tempMultipleAnswers].sort() : [];
+            // Multiple choice - get checked checkboxes
+            const checkedBoxes = Array.from(document.querySelectorAll('input[type="checkbox"]:checked'));
+            answer = checkedBoxes.map(cb => cb.value).sort();
+            
+            // Fallback: use temp storage if checkboxes aren't checked
+            if (answer.length === 0 && this.tempMultipleAnswers && this.tempMultipleAnswers.length > 0) {
+                answer = [...this.tempMultipleAnswers].sort();
+            }
+            
             if (answer.length === 0 && this.quizState.immediateMode) {
                 this.showToast('Please select at least one answer', 'warning');
                 return;
             }
         } else {
-            // Single answer
-            const selected = document.querySelector('input[name="answer"]:checked');
+            // Single choice - get checked radio button
+            let selected = document.querySelector('input[name="answer"]:checked');
+            
+            // Fallback: if no radio checked, look for selected class
+            if (!selected) {
+                const selectedDiv = document.querySelector('.quiz-option.selected');
+                if (selectedDiv) {
+                    const radioInput = selectedDiv.querySelector('input[type="radio"]');
+                    if (radioInput) {
+                        radioInput.checked = true;
+                        selected = radioInput;
+                    }
+                }
+            }
+            
             if (!selected && this.quizState.immediateMode) {
                 this.showToast('Please select an answer', 'warning');
                 return;
@@ -2390,6 +3152,28 @@ class QuizMasterApp {
     }
 
     async endQuiz() {
+        // Show loading while processing results
+        this.showLoading('Calculating your results...');
+        
+        // DELETE SAVED QUIZ WHEN COMPLETING
+        const selectedBank = document.getElementById('selectBank')?.value;
+        if (selectedBank) {
+            try {
+                console.log('Deleting saved quiz after completion...');
+                if (this.isLoggedIn) {
+                    await dbManager.deleteQuizProgress(selectedBank);
+                } else {
+                    const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+                    delete savedQuizzes[selectedBank];
+                    localStorage.setItem('savedQuizzes', JSON.stringify(savedQuizzes));
+                }
+                console.log('Saved quiz deleted successfully');
+            } catch (error) {
+                console.error('Error deleting saved quiz:', error);
+                // Don't show error to user, just log it
+            }
+        }
+        
         this.quizState.isActive = false;
         this.examLocked = false; // Unlock when exam ends
         this.removeTabHighlight(); // Remove visual indicator
@@ -2423,7 +3207,7 @@ class QuizMasterApp {
             answers: this.quizState.answers
         });
 
-        this.saveData();
+        await this.saveData();
 
         let message = '';
         let icon = '';
@@ -2495,6 +3279,9 @@ class QuizMasterApp {
 
         this.renderResultsPage();
         this.updateAnalytics();
+        
+        // Hide loading indicator after results are rendered
+        this.hideLoading();
     }
 
     renderResultsPage() {
@@ -2647,6 +3434,7 @@ class QuizMasterApp {
     retakeQuiz() {
         // Keep exam locked
         this.examLocked = true;
+        this.highlightActiveTab(); // Add red glow indicator
         
         // Disable test bank selector
         document.getElementById('selectBank').disabled = true;
@@ -2665,6 +3453,13 @@ class QuizMasterApp {
 
         // Always shuffle for each attempt
         this.currentQuestions = this.shuffleArray([...this.currentBank.questions]);
+
+        // Check if shuffle answers was enabled
+        const shuffleAnswers = document.getElementById('shuffleAnswers')?.checked || false;
+        if (shuffleAnswers) {
+            // Shuffle answers for each question
+            this.currentQuestions = this.currentQuestions.map(q => this.shuffleQuestionAnswers(q));
+        }
 
         if (this.quizState.timeLimit) {
             this.startTimer();
@@ -2964,7 +3759,13 @@ class QuizMasterApp {
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         
-        event.target.classList.add('active');
+        // Find and activate the correct tab button
+        const tabButtons = document.querySelectorAll('.nav-tab');
+        const tabMap = { 'manage': 0, 'study': 1, 'take': 2, 'notes': 3, 'analytics': 4 };
+        if (tabButtons[tabMap[tab]]) {
+            tabButtons[tabMap[tab]].classList.add('active');
+        }
+        
         document.getElementById(tab).classList.add('active');
 
         if (tab === 'analytics') {
@@ -3136,11 +3937,34 @@ class QuizMasterApp {
         }
     }
 
+    showExamWarning() {
+        // Show exam ongoing warning dialog
+        const warningDiv = document.createElement('div');
+        warningDiv.className = 'feedback-overlay';
+        warningDiv.innerHTML = `
+            <div class="feedback-content" style="background: white; max-width: 400px;">
+                <div style="font-size: 4em; margin-bottom: 20px;">⚠️</div>
+                <h2 style="color: #dc3545; margin-bottom: 15px;">Exam Ongoing!</h2>
+                <p style="color: #495057; margin-bottom: 25px;">Please stay focused on your exam. You cannot access other features until you complete or exit the exam.</p>
+                <button class="btn btn-primary" onclick="this.closest('.feedback-overlay').remove()">
+                    OK, Continue Exam
+                </button>
+            </div>
+        `;
+        document.body.appendChild(warningDiv);
+    }
+
     // ============================================
     // GEMINI AI INTEGRATION
     // ============================================
 
     showGeminiModal() {
+        // Check if exam is ongoing
+        if (this.examLocked) {
+            this.showExamWarning();
+            return;
+        }
+        
         document.getElementById('geminiModal').classList.add('active');
         document.body.classList.add('modal-open');
         document.getElementById('geminiResult').style.display = 'none';
@@ -3709,11 +4533,20 @@ LENGTH REQUIREMENT: ${lengthNote}`;
     }
 
     showUserModal() {
+        // Check if exam is ongoing
+        if (this.examLocked) {
+            this.showExamWarning();
+            return;
+        }
+        
         const modal = document.getElementById('userModal');
         if (modal) {
             modal.classList.add('active');
             document.body.classList.add('modal-open');
         }
+        
+        // Switch to username tab by default
+        this.switchUserTab('username');
         
         const newUsernameInput = document.getElementById('newUsername');
         const currentPassInput = document.getElementById('currentPassword');
@@ -3730,6 +4563,43 @@ LENGTH REQUIREMENT: ${lengthNote}`;
         if (confirmPassMsg) confirmPassMsg.textContent = '';
         
         this.closeMobileMenu();
+    }
+
+    switchUserTab(tab) {
+        // Hide all tab contents
+        document.getElementById('usernameTabContent').style.display = 'none';
+        document.getElementById('passwordTabContent').style.display = 'none';
+        document.getElementById('dangerTabContent').style.display = 'none';
+        
+        // Remove active class from all tabs
+        document.getElementById('usernameTabBtn').classList.remove('active');
+        document.getElementById('passwordTabBtn').classList.remove('active');
+        document.getElementById('dangerTabBtn').classList.remove('active');
+        
+        // Reset tab styles
+        const tabs = document.querySelectorAll('.user-modal-tab');
+        tabs.forEach(t => {
+            t.style.color = '#6c757d';
+            t.style.borderBottom = '3px solid transparent';
+        });
+        
+        // Show selected tab and mark as active
+        if (tab === 'username') {
+            document.getElementById('usernameTabContent').style.display = 'block';
+            document.getElementById('usernameTabBtn').classList.add('active');
+            document.getElementById('usernameTabBtn').style.color = '#667eea';
+            document.getElementById('usernameTabBtn').style.borderBottom = '3px solid #667eea';
+        } else if (tab === 'password') {
+            document.getElementById('passwordTabContent').style.display = 'block';
+            document.getElementById('passwordTabBtn').classList.add('active');
+            document.getElementById('passwordTabBtn').style.color = '#667eea';
+            document.getElementById('passwordTabBtn').style.borderBottom = '3px solid #667eea';
+        } else if (tab === 'danger') {
+            document.getElementById('dangerTabContent').style.display = 'block';
+            document.getElementById('dangerTabBtn').classList.add('active');
+            document.getElementById('dangerTabBtn').style.color = '#667eea';
+            document.getElementById('dangerTabBtn').style.borderBottom = '3px solid #667eea';
+        }
     }
 
     closeUserModal() {
@@ -3963,6 +4833,12 @@ LENGTH REQUIREMENT: ${lengthNote}`;
     }
 
     async logoutUser() {
+        // Check if exam is ongoing
+        if (this.examLocked) {
+            this.showExamWarning();
+            return;
+        }
+        
         if (confirm('Are you sure you want to log out?')) {
             this.showLoading('Logging out...');
             
@@ -4093,6 +4969,48 @@ LENGTH REQUIREMENT: ${lengthNote}`;
             } else {
                 this.showToast('Failed to delete account', 'error');
             }
+        }
+    }
+
+    setupAutoSaveOnUnload() {
+        window.addEventListener('beforeunload', (e) => {
+            // Only prompt if quiz is active and timer is not enabled
+            if (this.quizState.isActive && !this.quizState.timeLimit) {
+                e.preventDefault();
+                e.returnValue = 'Are you sure you want to refresh? Your quiz progress will be saved automatically.';
+                
+                // Try to save quiz progress
+                this.autoSaveQuizProgress();
+                
+                return e.returnValue;
+            }
+        });
+    }
+
+    autoSaveQuizProgress() {
+        try {
+            const selectedBank = document.getElementById('selectBank')?.value;
+            if (!selectedBank || !this.quizState.isActive) return;
+
+            const quizData = {
+                currentIndex: this.quizState.currentIndex,
+                answers: this.quizState.answers,
+                startTime: this.quizState.startTime,
+                immediateMode: this.quizState.immediateMode,
+                totalQuestions: this.currentQuestions.length
+            };
+
+            // Save to localStorage (works for both logged-in and guests)
+            const savedQuizzes = JSON.parse(localStorage.getItem('savedQuizzes') || '{}');
+            savedQuizzes[selectedBank] = {
+                ...quizData,
+                savedAt: new Date().toISOString()
+            };
+            localStorage.setItem('savedQuizzes', JSON.stringify(savedQuizzes));
+            
+            console.log('Quiz auto-saved on refresh');
+        } catch (error) {
+            console.error('Auto-save error:', error);
         }
     }
 }
