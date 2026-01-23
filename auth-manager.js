@@ -63,12 +63,23 @@ class AuthManager {
     // Sign in existing user
     async signIn(username, password) {
         try {
-            // Convert username to email
+            // Convert username to email (lowercase for Firebase)
             const email = this.usernameToEmail(username);
 
             // Sign in with Firebase Auth
             const userCredential = await auth.signInWithEmailAndPassword(email, password);
             const user = userCredential.user;
+
+            // CASE-SENSITIVE CHECK: Verify exact username match
+            const userDoc = await db.collection('users').doc(user.uid).get();
+            if (userDoc.exists) {
+                const storedUsername = userDoc.data().username;
+                if (storedUsername !== username) {
+                    // Username case doesn't match - sign out and throw error
+                    await auth.signOut();
+                    throw new Error('Invalid username (case-sensitive)');
+                }
+            }
 
             this.currentUser = user;
             return user;
